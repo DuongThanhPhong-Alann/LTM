@@ -4,17 +4,268 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Đổi mật khẩu - File Transfer System</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        * {
+            font-family: 'Inter', sans-serif;
+        }
+        
+        body {
+            background: #f8fafc;
+            min-height: 100vh;
+        }
+        
+        .navbar {
+            background: white !important;
+            border-bottom: 1px solid #e2e8f0;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+            padding: 1rem 0;
+        }
+        
+        .navbar-brand {
+            font-weight: 700;
+            font-size: 1.25rem;
+            color: #0891b2 !important;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .navbar-brand i {
+            color: #06b6d4;
+        }
+        
+        .navbar-text {
+            color: #475569 !important;
+            font-weight: 500;
+        }
+        
+        .navbar-text strong {
+            color: #0f172a;
+        }
+        
+        .btn-outline-primary {
+            border: 1.5px solid #06b6d4;
+            color: #0891b2;
+            background: white;
+            border-radius: 8px;
+            padding: 0.5rem 1.25rem;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        
+        .btn-outline-primary:hover {
+            background: #06b6d4;
+            color: white;
+            transform: translateY(-1px);
+        }
+        
+        .container {
+            max-width: 800px;
+        }
+        
+        .card {
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 16px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+            overflow: hidden;
+            margin-top: 2rem;
+        }
+        
+        .card-header {
+            background: #f8fafc;
+            border-bottom: 1px solid #e2e8f0;
+            padding: 1.5rem;
+        }
+        
+        .card-header h5 {
+            color: #0f172a;
+            font-weight: 600;
+            font-size: 1.25rem;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        
+        .card-header i {
+            color: #06b6d4;
+            font-size: 1.5rem;
+        }
+        
+        .card-body {
+            padding: 2rem;
+        }
+        
+        .form-label {
+            font-weight: 500;
+            color: #334155;
+            margin-bottom: 0.5rem;
+            font-size: 0.875rem;
+        }
+        
+        .input-group {
+            position: relative;
+            margin-bottom: 1.5rem;
+        }
+        
+        .form-control {
+            border: 1.5px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 0.75rem 3rem 0.75rem 1rem;
+            transition: all 0.2s;
+            background: #f8fafc;
+            font-size: 0.95rem;
+        }
+        
+        .form-control:focus {
+            border-color: #06b6d4;
+            box-shadow: 0 0 0 4px rgba(6, 182, 212, 0.1);
+            background: white;
+        }
+        
+        .form-control::placeholder {
+            color: #94a3b8;
+        }
+        
+        .password-toggle {
+            position: absolute;
+            right: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            cursor: pointer;
+            color: #94a3b8;
+            transition: all 0.2s;
+        }
+        
+        .password-toggle:hover {
+            color: #06b6d4;
+        }
+        
+        .btn {
+            border-radius: 8px;
+            padding: 0.625rem 1.5rem;
+            font-weight: 500;
+            transition: all 0.2s;
+            border: none;
+        }
+        
+        .btn-secondary {
+            background: #64748b;
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background: #475569;
+            transform: translateY(-1px);
+        }
+        
+        .btn-primary {
+            background: #06b6d4;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #0891b2;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(6, 182, 212, 0.3);
+        }
+        
+        .alert {
+            border-radius: 12px;
+            border: 1px solid;
+            padding: 1rem 1.25rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .alert-success {
+            background: #f0fdf4;
+            border-color: #bbf7d0;
+            color: #166534;
+        }
+        
+        .alert-danger {
+            background: #fef2f2;
+            border-color: #fecaca;
+            color: #991b1b;
+        }
+        
+        .password-requirements {
+            background: #f0fdff;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-top: 2rem;
+            border: 1px solid #cffafe;
+        }
+        
+        .password-requirements h6 {
+            color: #0891b2;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            font-size: 0.95rem;
+        }
+        
+        .password-requirements ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        
+        .password-requirements li {
+            padding: 0.5rem 0;
+            color: #475569;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .password-requirements i {
+            color: #10b981;
+            font-size: 0.875rem;
+        }
+        
+        @media (max-width: 768px) {
+            .card-body {
+                padding: 1.5rem;
+            }
+            
+            .d-flex.justify-content-between {
+                flex-direction: column;
+                gap: 0.75rem;
+            }
+            
+            .d-flex.justify-content-between .btn {
+                width: 100%;
+            }
+            
+            .navbar-text {
+                display: none;
+            }
+        }
+    </style>
 </head>
 <body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+    <nav class="navbar navbar-expand-lg">
         <div class="container">
-            <a class="navbar-brand" href="{{ url_for('index') }}">File Transfer System</a>
-            <div class="navbar-text text-white me-2">
-                Xin chào, {{ username }}!
+            <a class="navbar-brand" href="{{ url_for('index') }}">
+                <i class="fas fa-cloud"></i>
+                <span>File Transfer</span>
+            </a>
+            <div class="ms-auto d-flex align-items-center gap-3">
+                <div class="navbar-text">
+                    <span>Xin chào,</span> <strong>{{ username }}</strong>
+                </div>
+                <a href="{{ url_for('logout') }}" class="btn btn-outline-primary btn-sm">
+                    <i class="fas fa-sign-out-alt me-1"></i>
+                    <span class="d-none d-sm-inline">Đăng xuất</span>
+                </a>
             </div>
-            <a href="{{ url_for('logout') }}" class="btn btn-outline-light">Đăng xuất</a>
         </div>
     </nav>
 
@@ -23,6 +274,7 @@
             {% if messages %}
                 {% for category, message in messages %}
                     <div class="alert alert-{{ 'danger' if category == 'error' else 'success' }} alert-dismissible fade show" role="alert">
+                        <i class="fas fa-{{ 'exclamation-circle' if category == 'error' else 'check-circle' }} me-2"></i>
                         {{ message }}
                         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                     </div>
@@ -31,34 +283,83 @@
         {% endwith %}
 
         <div class="row justify-content-center">
-            <div class="col-md-6">
+            <div class="col-12">
                 <div class="card">
                     <div class="card-header">
-                        <h5 class="mb-0">Đổi mật khẩu</h5>
+                        <h5>
+                            <i class="fas fa-key"></i>
+                            Đổi mật khẩu
+                        </h5>
                     </div>
                     <div class="card-body">
                         <form method="POST">
-                            <div class="mb-3">
-                                <label for="current_password" class="form-label">Mật khẩu hiện tại</label>
-                                <input type="password" class="form-control" id="current_password" name="current_password" required>
+                            <div class="row">
+                                <div class="col-12">
+                                    <label for="current_password" class="form-label">Mật khẩu hiện tại</label>
+                                    <div class="input-group">
+                                        <input type="password" class="form-control" id="current_password" name="current_password" 
+                                               placeholder="Nhập mật khẩu hiện tại" required>
+                                        <span class="password-toggle" onclick="togglePassword('current_password')">
+                                            <i class="fas fa-eye" id="current_password_icon"></i>
+                                        </span>
+                                    </div>
+                                </div>
+                                
+                                <div class="col-md-6">
+                                    <label for="new_password" class="form-label">Mật khẩu mới</label>
+                                    <div class="input-group">
+                                        <input type="password" class="form-control" id="new_password" name="new_password" 
+                                               placeholder="Nhập mật khẩu mới" required>
+                                        <span class="password-toggle" onclick="togglePassword('new_password')">
+                                            <i class="fas fa-eye" id="new_password_icon"></i>
+                                        </span>
+                                    </div>
+                                </div>
+                                
+                                <div class="col-md-6">
+                                    <label for="confirm_password" class="form-label">Xác nhận mật khẩu mới</label>
+                                    <div class="input-group">
+                                        <input type="password" class="form-control" id="confirm_password" name="confirm_password" 
+                                               placeholder="Nhập lại mật khẩu mới" required>
+                                        <span class="password-toggle" onclick="togglePassword('confirm_password')">
+                                            <i class="fas fa-eye" id="confirm_password_icon"></i>
+                                        </span>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="mb-3">
-                                <label for="new_password" class="form-label">Mật khẩu mới</label>
-                                <input type="password" class="form-control" id="new_password" name="new_password" required>
-                            </div>
-                            <div class="mb-3">
-                                <label for="confirm_password" class="form-label">Xác nhận mật khẩu mới</label>
-                                <input type="password" class="form-control" id="confirm_password" name="confirm_password" required>
-                            </div>
-                            <div class="d-flex justify-content-between align-items-center">
+                            
+                            <div class="d-flex justify-content-between align-items-center mt-2">
                                 <a href="{{ url_for('index') }}" class="btn btn-secondary">
-                                    <i class="fas fa-arrow-left"></i> Quay lại
+                                    <i class="fas fa-arrow-left me-2"></i>
+                                    Quay lại
                                 </a>
                                 <button type="submit" class="btn btn-primary">
-                                    <i class="fas fa-key"></i> Đổi mật khẩu
+                                    <i class="fas fa-check me-2"></i>
+                                    Cập nhật
                                 </button>
                             </div>
                         </form>
+                        
+                        <div class="password-requirements">
+                            <h6>
+                                <i class="fas fa-info-circle me-2"></i>
+                                Yêu cầu mật khẩu
+                            </h6>
+                            <ul>
+                                <li>
+                                    <i class="fas fa-check-circle"></i>
+                                    <span>Tối thiểu 6 ký tự</span>
+                                </li>
+                                <li>
+                                    <i class="fas fa-check-circle"></i>
+                                    <span>Nên kết hợp chữ hoa, chữ thường</span>
+                                </li>
+                                <li>
+                                    <i class="fas fa-check-circle"></i>
+                                    <span>Nên có chữ số và ký tự đặc biệt</span>
+                                </li>
+                            </ul>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -66,5 +367,21 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        function togglePassword(fieldId) {
+            const field = document.getElementById(fieldId);
+            const icon = document.getElementById(fieldId + '_icon');
+            
+            if (field.type === 'password') {
+                field.type = 'text';
+                icon.classList.remove('fa-eye');
+                icon.classList.add('fa-eye-slash');
+            } else {
+                field.type = 'password';
+                icon.classList.remove('fa-eye-slash');
+                icon.classList.add('fa-eye');
+            }
+        }
+    </script>
 </body>
 </html>

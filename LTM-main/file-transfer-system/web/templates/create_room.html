@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+    <h2>Tạo phòng chat mới</h2>
+    <div class="card">
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('create_room') }}">
+                <div class="mb-3">
+                    <label for="room_name" class="form-label">Tên phòng chat</label>
+                    <input type="text" class="form-control" id="room_name" name="room_name" required>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Chọn thành viên</label>
+                    <div class="border rounded p-3" style="max-height: 200px; overflow-y: auto;">
+                        {% for user in private_users %}
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" name="members" value="{{ user.userid }}" id="user{{ user.userid }}">
+                            <label class="form-check-label" for="user{{ user.userid }}">
+                                {{ user.username }}
+                            </label>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-primary">Tạo phòng</button>
+                    <a href="{{ url_for('chat') }}" class="btn btn-secondary">Quay lại</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

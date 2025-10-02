@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+    @keyframes slideIn {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .message {
+        margin-bottom: 15px;
+        display: flex;
+        flex-direction: column;
+        max-width: 70%;
+        animation: slideIn 0.3s ease-out;
+    }
+
+    .message-content {
+        padding: 12px 15px;
+        border-radius: 18px;
+        margin-bottom: 5px;
+        word-wrap: break-word;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    }
+
+    .message-info {
+        font-size: 0.8em;
+        color: #888;
+        padding: 0 5px;
+    }
+
+    .my-message {
+        align-self: flex-end;
+        align-items: flex-end;
+    }
+
+    .my-message .message-content {
+        background-color: #0084ff;
+        color: white;
+        border-bottom-right-radius: 5px;
+    }
+
+    .other-message {
+        align-self: flex-start;
+        align-items: flex-start;
+    }
+
+    .other-message .message-content {
+        background-color: #f0f2f5;
+        color: black;
+        border-bottom-left-radius: 5px;
+    }
+
+    #messageContainer {
+        display: flex;
+        flex-direction: column;
+        padding: 15px;
+        background-color: #fff;
+    }
+
+    .message-time {
+        font-size: 0.75em;
+        color: #999;
+        margin-top: 2px;
+    }
+
+    .message-username {
+        font-weight: 600;
+        color: #444;
+    }
+</style>
+
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-12">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h2>Phòng: {{ room.roomname }}</h2>
+                <a href="{{ url_for('chat') }}" class="btn btn-secondary">Quay lại</a>
+            </div>
+            <div class="card">
+                <div class="card-body" id="messageContainer" style="height: 400px; overflow-y: auto;">
+                    {% for message in messages %}
+                    <div class="message {% if message.userid == my_id %}my-message{% else %}other-message{% endif %}">
+                        <div class="message-content">
+                            {{ message.content }}
+                        </div>
+                        <div class="message-info">
+                            {{ message.username }} - {{ message.createdat }}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                <div class="card-footer">
+                    <form id="messageForm" class="d-flex gap-2" method="POST" action="{{ url_for('send_group_message', roomid=room.roomid) }}">
+                        <input type="text" class="form-control" id="messageInput" name="content" placeholder="Nhập tin nhắn..." required>
+                        <button type="submit" class="btn btn-primary">Gửi</button>
+                    </form>
+                    <div id="messageError" class="text-danger mt-2" style="display: none;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const messageForm = document.getElementById('messageForm');
+    const messageInput = document.getElementById('messageInput');
+    const messageContainer = document.getElementById('messageContainer');
+    let lastMessageId = '{{ messages[-1].messageid if messages else "0" }}';
+    const myId = {{ my_id }};
+
+    function formatDate(dateString) {
+        const date = new Date(dateString);
+        const now = new Date();
+        const diff = now - date;
+        
+        // Nếu trong vòng 1 phút
+        if (diff < 60000) {
+            return 'Vừa xong';
+        }
+        
+        // Nếu trong vòng 1 giờ
+        if (diff < 3600000) {
+            const minutes = Math.floor(diff / 60000);
+            return `${minutes} phút trước`;
+        }
+        
+        // Nếu cùng ngày
+        if (date.toDateString() === now.toDateString()) {
+            return date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+        }
+        
+        // Nếu trong năm nay
+        if (date.getFullYear() === now.getFullYear()) {
+            return date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+        }
+        
+        // Nếu khác năm
+        return date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    }
+
+    function appendMessage(message) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message ${message.userid === myId ? 'my-message' : 'other-message'}`;
+        messageDiv.innerHTML = `
+            <div class="message-content">
+                ${message.content}
+            </div>
+            <div class="message-info">
+                <span class="message-username">${message.username}</span>
+                <span class="message-time">${formatDate(message.createdat)}</span>
+            </div>
+        `;
+        messageContainer.appendChild(messageDiv);
+        messageContainer.scrollTop = messageContainer.scrollHeight;
+        lastMessageId = message.messageid;
+    }
+
+    // Submit message
+    messageForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const errorDiv = document.getElementById('messageError');
+        errorDiv.style.display = 'none';
+        
+        const content = messageInput.value.trim();
+        if (!content) {
+            errorDiv.textContent = 'Vui lòng nhập tin nhắn';
+            errorDiv.style.display = 'block';
+            return;
+        }
+
+        try {
+            const formData = new FormData(messageForm);
+            const response = await fetch(messageForm.action, {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const result = await response.json();
+            console.log('Server response:', result);
+
+            if (result.success) {
+                messageInput.value = '';
+                appendMessage(result.message);
+            } else {
+                errorDiv.textContent = result.error || 'Có lỗi khi gửi tin nhắn';
+                errorDiv.style.display = 'block';
+            }
+        } catch (error) {
+            console.error('Error sending message:', error);
+        }
+    });
+
+    // Poll for new messages
+    async function pollMessages() {
+        try {
+            const response = await fetch(`{{ url_for("get_group_messages", roomid=room.roomid) }}?after=${lastMessageId}`);
+            const data = await response.json();
+            
+            if (data.messages) {
+                data.messages.forEach(message => {
+                    appendMessage(message);
+                });
+            }
+        } catch (error) {
+            console.error('Error polling messages:', error);
+        }
+    }
+
+    // Poll every 2 seconds
+    setInterval(pollMessages, 2000);
+
+    // Initial scroll to bottom
+    messageContainer.scrollTop = messageContainer.scrollHeight;
+});
+</script>
+{% endblock %}

@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+    <h2>Chat riêng với {{ chat_user }}</h2>
+    <div class="chat-box border rounded p-3 mb-3" style="height:300px;overflow-y:auto;" id="chat-box">
+        <div id="messages">
+        {% for msg in messages %}
+        <div class="d-flex {% if msg.senderid == userid %}justify-content-start{% else %}justify-content-end{% endif %}">
+            <div class="mb-2 p-2 rounded {% if msg.senderid == userid %}bg-light text-dark{% else %}bg-primary text-white{% endif %}" style="max-width:70%;">
+                <strong>{% if msg.senderid == userid %}{{ chat_user }}{% else %}Bạn{% endif %}</strong>: {{ msg.content }}
+                <span class="text-muted" style="font-size:0.8em">{{ msg.createdat }}</span>
+            </div>
+        </div>
+        {% endfor %}
+        </div>
+    </div>
+    <form method="post" action="#" id="send-form">
+        <div class="input-group">
+            <input type="text" class="form-control" name="message" id="msg-input" placeholder="Nhập tin nhắn...">
+            <button class="btn btn-primary" type="submit">Gửi</button>
+        </div>
+    </form>
+    <a href="{{ url_for('chat') }}" class="btn btn-secondary mt-3">Quay lại danh sách chat</a>
+</div>
+
+<script>
+    // Polling for new messages every 2 seconds
+
+    const userid = {{ userid }};
+    const my_id = {{ my_id }};
+    const chat_user = "{{ chat_user }}";
+    let lastMessageIds = new Set(); // Lưu ID các tin nhắn đã hiển thị
+    
+    function createMessageElement(msg) {
+        const div = document.createElement('div');
+        div.classList.add('d-flex');
+        div.dataset.messageId = msg.messageid;
+        
+        if (msg.senderid === my_id) {
+            div.classList.add('justify-content-end');
+            div.innerHTML = `<div class='mb-2 p-2 rounded bg-primary text-white' style='max-width:70%;'>
+                <strong>Bạn</strong>: ${msg.content}
+                <span class='text-muted' style='font-size:0.8em'>${msg.createdat}</span>
+            </div>`;
+        } else {
+            div.classList.add('justify-content-start');
+            div.innerHTML = `<div class='mb-2 p-2 rounded bg-light text-dark' style='max-width:70%;'>
+                <strong>${chat_user}</strong>: ${msg.content}
+                <span class='text-muted' style='font-size:0.8em'>${msg.createdat}</span>
+            </div>`;
+        }
+        return div;
+    }
+    
+    function fetchMessages() {
+        fetch(`/private_chat/messages/${userid}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.messages && data.messages.length > 0) {
+                    const messagesDiv = document.getElementById('messages');
+                    let hasNewMessages = false;
+                    
+                    data.messages.forEach(msg => {
+                        if (msg.messageid && !lastMessageIds.has(msg.messageid)) {
+                            const msgElement = createMessageElement(msg);
+                            messagesDiv.appendChild(msgElement);
+                            lastMessageIds.add(msg.messageid);
+                            hasNewMessages = true;
+                        }
+                    });
+                    
+                    // Chỉ scroll khi có tin nhắn mới
+                    if (hasNewMessages) {
+                        const chatBox = document.getElementById('chat-box');
+                        chatBox.scrollTop = chatBox.scrollHeight;
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching messages:', error);
+            });
+    }
+    
+    // Fetch lần đầu và cài đặt interval
+    fetchMessages();
+    const pollInterval = setInterval(fetchMessages, 2000);
+    
+    // Dọn dẹp khi rời trang
+    window.onbeforeunload = function() {
+        clearInterval(pollInterval);
+    };
+
+    // AJAX send message
+    document.getElementById('send-form').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const input = document.getElementById('msg-input');
+        const content = input.value.trim();
+        if (!content) {
+            return;
+        }
+        
+        fetch(`/private_chat/send/${userid}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: `content=${encodeURIComponent(content)}`
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(response.statusText);
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.success) {
+                input.value = '';
+                if (data.message && data.message.messageid) {
+                    // Thêm tin nhắn mới ngay lập tức vào giao diện
+                    const msgElement = createMessageElement(data.message);
+                    const messagesDiv = document.getElementById('messages');
+                    messagesDiv.appendChild(msgElement);
+                    lastMessageIds.add(data.message.messageid);
+                    
+                    // Scroll xuống dưới
+                    const chatBox = document.getElementById('chat-box');
+                    chatBox.scrollTop = chatBox.scrollHeight;
+                }
+            } else if (data.error) {
+                throw new Error(data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error sending message:', error);
+            alert('Có lỗi khi gửi tin nhắn: ' + error.message);
+        });
+    });
+</script>
+{% endblock %}

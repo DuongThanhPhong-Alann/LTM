@@ -51,7 +51,7 @@
         color: white;
     }
     
-    /* Modal Styles */
+    /* Modal & Toast - giữ nguyên */
     .modal-overlay {
         display: none;
         position: fixed;
@@ -272,6 +272,44 @@
         font-size: 0.9rem;
     }
     
+    .user-profile-link {
+        color: white;
+        text-decoration: none;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 10px;
+        padding: 8px 12px;
+        border-radius: 8px;
+        transition: all 0.3s;
+        background: rgba(255, 255, 255, 0.1);
+    }
+    
+    .user-profile-link:hover {
+        background: rgba(255, 255, 255, 0.2);
+        transform: translateX(5px);
+    }
+    
+    .user-profile-avatar {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background: white;
+        color: #667eea;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 600;
+        font-size: 0.9rem;
+        overflow: hidden;
+    }
+    
+    .user-profile-avatar img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    
     .search-box {
         padding: 15px 20px;
         background: white;
@@ -344,6 +382,8 @@
         position: relative;
         background: white;
         border: 2px solid transparent;
+        display: flex;
+        align-items: center;
     }
     
     .conversation-item:hover {
@@ -370,6 +410,35 @@
         font-weight: 600;
         font-size: 1.2rem;
         margin-right: 15px;
+        position: relative;
+        overflow: hidden;
+        flex-shrink: 0;
+    }
+    
+    .conversation-avatar img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    
+    .conversation-avatar:hover {
+        transform: scale(1.05);
+        transition: transform 0.2s;
+    }
+    
+    .status-indicator {
+        position: absolute;
+        bottom: 2px;
+        right: 2px;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: #22c55e;
+        border: 2px solid white;
+    }
+    
+    .status-indicator.offline {
+        background: #94a3b8;
     }
     
     .conversation-item.active .conversation-avatar {
@@ -379,6 +448,7 @@
     
     .conversation-info {
         flex: 1;
+        min-width: 0;
     }
     
     .conversation-name {
@@ -503,6 +573,13 @@
         justify-content: center;
         color: white;
         font-weight: 600;
+        overflow: hidden;
+    }
+    
+    .search-result-avatar img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
     }
     
     .search-result-info {
@@ -548,6 +625,19 @@
         color: white;
         font-weight: 700;
         font-size: 1.3rem;
+        overflow: hidden;
+        cursor: pointer;
+        transition: transform 0.2s;
+    }
+    
+    .chat-avatar:hover {
+        transform: scale(1.05);
+    }
+    
+    .chat-avatar img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
     }
     
     .chat-header-text h5 {
@@ -603,6 +693,13 @@
         color: white;
         font-weight: 600;
         flex-shrink: 0;
+        overflow: hidden;
+    }
+    
+    .message-avatar img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
     }
     
     .message-content {
@@ -619,6 +716,7 @@
     
     .message.received .message-bubble {
         background: white;
+        color: #2d3748;
         border-bottom-left-radius: 4px;
     }
     
@@ -781,7 +879,7 @@
     </button>
 </div>
 
-<div class="chat-container">
+<div class="chat-container" data-user-logged-in="true">
     <!-- Sidebar -->
     <div class="sidebar">
         <div class="sidebar-header">
@@ -789,7 +887,16 @@
                 <i class="fas fa-comments"></i>
                 Tin nhắn
             </h4>
-            <p>{{ session['user'] }}</p>
+            <a href="{{ url_for('view_profile', username=session['user']) }}" class="user-profile-link">
+                <div class="user-profile-avatar">
+                    {% if current_user_avatar %}
+                        <img src="{{ current_user_avatar }}" alt="{{ session['user'] }}">
+                    {% else %}
+                        {{ session['user'][0].upper() }}
+                    {% endif %}
+                </div>
+                <span>{{ session['user'] }}</span>
+            </a>
         </div>
         
         <div class="search-box">
@@ -806,7 +913,7 @@
         
         <div class="conversations-list" id="conversationsList">
             {% for room in rooms %}
-            <div class="conversation-item d-flex align-items-center" data-type="group" data-id="{{ room.roomid }}" data-name="{{ room.roomname }}">
+            <div class="conversation-item" data-type="group" data-id="{{ room.roomid }}" data-name="{{ room.roomname }}">
                 <div class="conversation-avatar">
                     <i class="fas fa-users"></i>
                 </div>
@@ -823,10 +930,21 @@
             {% endfor %}
             
             {% for chat in recent_chats %}
-            <div class="conversation-item d-flex align-items-center" data-type="private" data-id="{{ chat.userid }}" data-name="{{ chat.username }}">
-                <div class="conversation-avatar">
-                    {{ chat.username[0].upper() }}
-                </div>
+            <div class="conversation-item" data-type="private" data-id="{{ chat.userid }}" data-name="{{ chat.username }}" data-avatar="{{ chat.avatar_url or '' }}" data-online="{{ 'true' if chat.is_online else 'false' }}">
+                <a href="{{ url_for('view_profile', username=chat.username) }}" onclick="event.stopPropagation();" style="text-decoration: none;">
+                    <div class="conversation-avatar">
+                        {% if chat.avatar_url %}
+                            <img src="{{ chat.avatar_url }}" alt="{{ chat.username }}">
+                        {% else %}
+                            {{ chat.username[0].upper() }}
+                        {% endif %}
+                        {% if chat.is_online %}
+                            <span class="status-indicator"></span>
+                        {% else %}
+                            <span class="status-indicator offline"></span>
+                        {% endif %}
+                    </div>
+                </a>
                 <div class="conversation-info">
                     <div class="conversation-name">{{ chat.username }}</div>
                     <div class="conversation-preview">{{ chat.last_message[:30] if chat.last_message else 'Chat riêng' }}</div>
@@ -859,10 +977,13 @@
     </div>
 </div>
 
+<script src="{{ url_for('static', filename='activity_tracker.js') }}"></script>
 <script>
     let currentChatType = null;
     let currentChatId = null;
     let currentChatName = null;
+    let currentChatAvatar = null;
+    let currentChatOnline = false;
     let myUserId = null;
     let pollingInterval = null;
     let lastMessageId = 0;
@@ -928,7 +1049,6 @@
                 closeDeleteModal();
                 if (data.success) {
                     showToast('Đã xóa tin nhắn thành công', 'success');
-                    // Clear messages from current chat
                     const container = document.getElementById('messagesContainer');
                     if (container) {
                         container.innerHTML = '';
@@ -948,16 +1068,24 @@
     
     // Load chat when clicking conversation item
     document.querySelectorAll('.conversation-item').forEach(item => {
-        item.addEventListener('click', function() {
+        item.addEventListener('click', function(e) {
+            // Don't trigger if clicking on avatar link
+            if (e.target.closest('a')) return;
+            
             const type = this.dataset.type;
             const id = this.dataset.id;
             const name = this.dataset.name;
+            const avatar = this.dataset.avatar || '';
+            const online = this.dataset.online === 'true';
             
             document.querySelectorAll('.conversation-item').forEach(i => i.classList.remove('active'));
             this.classList.add('active');
             
             loadedMessageIds.clear();
             lastMessageId = 0;
+            
+            currentChatAvatar = avatar;
+            currentChatOnline = online;
             
             if (type === 'group') {
                 loadGroupChat(id, name);
@@ -1005,16 +1133,24 @@
         currentChatId = userid;
         currentChatName = username;
         
+        const avatarHtml = currentChatAvatar 
+            ? `<img src="${currentChatAvatar}" alt="${username}">`
+            : username[0].toUpperCase();
+        
+        const statusText = currentChatOnline ? 'Đang hoạt động' : 'Offline';
+        
         const chatArea = document.getElementById('chatArea');
         chatArea.innerHTML = `
             <div class="chat-header">
                 <div class="chat-header-info">
-                    <div class="chat-avatar">
-                        ${username[0].toUpperCase()}
-                    </div>
+                    <a href="/view_profile/${username}" style="text-decoration: none;">
+                        <div class="chat-avatar">
+                            ${avatarHtml}
+                        </div>
+                    </a>
                     <div class="chat-header-text">
                         <h5>${username}</h5>
-                        <p>Chat riêng</p>
+                        <p>${statusText}</p>
                     </div>
                 </div>
             </div>
@@ -1091,13 +1227,18 @@
         messageDiv.className = `message ${isSent ? 'sent' : 'received'}`;
         messageDiv.dataset.msgid = msg.messageid || msg.MessageID;
         
-        const avatar = msg.username ? msg.username[0].toUpperCase() : '?';
+        const username = msg.username || 'User';
+        const avatar = username[0].toUpperCase();
+        const avatarHtml = msg.avatar_url 
+            ? `<img src="${msg.avatar_url}" alt="${username}">`
+            : avatar;
+        
         const content = msg.content || msg.Content;
         const time = msg.createdat || msg.CreatedAt;
-        const sender = msg.username || 'User';
+        const sender = username;
         
         messageDiv.innerHTML = `
-            <div class="message-avatar">${avatar}</div>
+            <div class="message-avatar">${avatarHtml}</div>
             <div class="message-content">
                 <div class="message-bubble">${content}</div>
                 <div class="message-info">
@@ -1214,8 +1355,13 @@
                         data.users.forEach(user => {
                             const item = document.createElement('div');
                             item.className = 'search-result-item';
+                            
+                            const avatarHtml = user.avatar_url 
+                                ? `<img src="${user.avatar_url}" alt="${user.username}">`
+                                : user.username[0].toUpperCase();
+                            
                             item.innerHTML = `
-                                <div class="search-result-avatar">${user.username[0].toUpperCase()}</div>
+                                <div class="search-result-avatar">${avatarHtml}</div>
                                 <div class="search-result-info">
                                     <div class="search-result-name">${user.username}</div>
                                 </div>
@@ -1223,7 +1369,7 @@
                             item.addEventListener('click', () => {
                                 resultsDiv.classList.remove('show');
                                 document.getElementById('userSearch').value = '';
-                                startNewChat(user.userid, user.username);
+                                startNewChat(user.userid, user.username, user.avatar_url, user.is_online);
                             });
                             resultsDiv.appendChild(item);
                         });
@@ -1239,17 +1385,33 @@
         }, 300);
     });
     
-    function startNewChat(userid, username) {
+    function startNewChat(userid, username, avatar_url, is_online) {
         const existingItem = document.querySelector(`.conversation-item[data-type="private"][data-id="${userid}"]`);
         if (!existingItem) {
             const conversationsList = document.getElementById('conversationsList');
             const newItem = document.createElement('div');
-            newItem.className = 'conversation-item d-flex align-items-center';
+            newItem.className = 'conversation-item';
             newItem.dataset.type = 'private';
             newItem.dataset.id = userid;
             newItem.dataset.name = username;
+            newItem.dataset.avatar = avatar_url || '';
+            newItem.dataset.online = is_online ? 'true' : 'false';
+            
+            const avatarHtml = avatar_url 
+                ? `<img src="${avatar_url}" alt="${username}">`
+                : username[0].toUpperCase();
+            
+            const statusHtml = is_online 
+                ? '<span class="status-indicator"></span>'
+                : '<span class="status-indicator offline"></span>';
+            
             newItem.innerHTML = `
-                <div class="conversation-avatar">${username[0].toUpperCase()}</div>
+                <a href="/view_profile/${username}" onclick="event.stopPropagation();" style="text-decoration: none;">
+                    <div class="conversation-avatar">
+                        ${avatarHtml}
+                        ${statusHtml}
+                    </div>
+                </a>
                 <div class="conversation-info">
                     <div class="conversation-name">${username}</div>
                     <div class="conversation-preview">Chat riêng</div>
@@ -1260,16 +1422,21 @@
                     </button>
                 </div>
             `;
-            newItem.addEventListener('click', function() {
+            newItem.addEventListener('click', function(e) {
+                if (e.target.closest('a')) return;
                 document.querySelectorAll('.conversation-item').forEach(i => i.classList.remove('active'));
                 this.classList.add('active');
                 loadedMessageIds.clear();
                 lastMessageId = 0;
+                currentChatAvatar = avatar_url;
+                currentChatOnline = is_online;
                 loadPrivateChat(userid, username);
             });
             conversationsList.insertBefore(newItem, conversationsList.firstChild);
         }
         
+        currentChatAvatar = avatar_url;
+        currentChatOnline = is_online;
         loadPrivateChat(userid, username);
         document.querySelectorAll('.conversation-item').forEach(i => i.classList.remove('active'));
         const targetItem = document.querySelector(`.conversation-item[data-type="private"][data-id="${userid}"]`);

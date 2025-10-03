@@ -51,7 +51,7 @@
         color: white;
     }
     
-    /* Modal & Toast - giữ nguyên */
+    /* Modal & Toast */
     .modal-overlay {
         display: none;
         position: fixed;
@@ -74,8 +74,10 @@
         background: white;
         border-radius: 20px;
         padding: 30px;
-        max-width: 400px;
+        max-width: 500px;
         width: 90%;
+        max-height: 80vh;
+        overflow-y: auto;
         box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
         animation: slideUp 0.3s ease;
     }
@@ -107,12 +109,16 @@
         width: 50px;
         height: 50px;
         border-radius: 50%;
-        background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         display: flex;
         align-items: center;
         justify-content: center;
         color: white;
         font-size: 1.5rem;
+    }
+    
+    .modal-icon.warning {
+        background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
     }
     
     .modal-title {
@@ -152,6 +158,16 @@
         background: #e9ecef;
     }
     
+    .modal-btn-primary {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+    }
+    
+    .modal-btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+    }
+    
     .modal-btn-delete {
         background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
         color: white;
@@ -160,6 +176,141 @@
     .modal-btn-delete:hover {
         transform: translateY(-2px);
         box-shadow: 0 8px 20px rgba(238, 90, 111, 0.4);
+    }
+    
+    /* File List in Modal */
+    .file-list {
+        max-height: 300px;
+        overflow-y: auto;
+        margin: 20px 0;
+    }
+    
+    .file-item {
+        padding: 12px;
+        margin-bottom: 8px;
+        border-radius: 8px;
+        background: #f8f9fa;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+    
+    .file-item:hover {
+        background: #e9ecef;
+        transform: translateX(5px);
+    }
+    
+    .file-item.selected {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+    }
+    
+    .file-item i {
+        font-size: 1.5rem;
+    }
+    
+    .file-info {
+        flex: 1;
+    }
+    
+    .file-name {
+        font-weight: 600;
+        margin-bottom: 4px;
+    }
+    
+    .file-meta {
+        font-size: 0.85rem;
+        opacity: 0.7;
+    }
+    
+    .upload-section {
+        margin-top: 20px;
+        padding-top: 20px;
+        border-top: 2px dashed #dee2e6;
+    }
+    
+    .upload-area {
+        border: 2px dashed #667eea;
+        border-radius: 12px;
+        padding: 30px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.3s;
+        background: #f8f9fa;
+    }
+    
+    .upload-area:hover {
+        background: #e7f3ff;
+        border-color: #764ba2;
+    }
+    
+    .upload-area.dragover {
+        background: #e7f3ff;
+        border-color: #764ba2;
+        transform: scale(1.02);
+    }
+    
+    .upload-icon {
+        font-size: 3rem;
+        color: #667eea;
+        margin-bottom: 10px;
+    }
+    
+    .upload-text {
+        color: #6c757d;
+        margin-bottom: 10px;
+    }
+    
+    .upload-hint {
+        font-size: 0.85rem;
+        color: #adb5bd;
+    }
+    
+    #fileInput {
+        display: none;
+    }
+    
+    .selected-file {
+        margin-top: 15px;
+        padding: 10px;
+        background: #e7f3ff;
+        border-radius: 8px;
+        display: none;
+        align-items: center;
+        gap: 10px;
+    }
+    
+    .selected-file.show {
+        display: flex;
+    }
+    
+    .selected-file i {
+        color: #667eea;
+        font-size: 1.2rem;
+    }
+    
+    .selected-file-info {
+        flex: 1;
+    }
+    
+    .selected-file-name {
+        font-weight: 600;
+        color: #212529;
+    }
+    
+    .selected-file-size {
+        font-size: 0.85rem;
+        color: #6c757d;
+    }
+    
+    .remove-file {
+        background: none;
+        border: none;
+        color: #dc3545;
+        cursor: pointer;
+        padding: 5px;
     }
     
     /* Toast Notification */
@@ -241,7 +392,7 @@
         justify-content: center;
     }
     
-    /* Sidebar */
+    /* Sidebar - giữ nguyên code cũ */
     .sidebar {
         width: 350px;
         background: linear-gradient(180deg, #ffffff 0%, #f8f9fa 100%);
@@ -726,6 +877,53 @@
         border-bottom-right-radius: 4px;
     }
     
+    /* File attachment styling */
+    .file-attachment {
+        margin-top: 8px;
+        padding: 10px;
+        background: rgba(0, 0, 0, 0.05);
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    
+    .message.sent .file-attachment {
+        background: rgba(255, 255, 255, 0.2);
+    }
+    
+    .file-attachment:hover {
+        background: rgba(0, 0, 0, 0.1);
+    }
+    
+    .message.sent .file-attachment:hover {
+        background: rgba(255, 255, 255, 0.3);
+    }
+    
+    .file-attachment-icon {
+        font-size: 1.5rem;
+    }
+    
+    .file-attachment-info {
+        flex: 1;
+        min-width: 0;
+    }
+    
+    .file-attachment-name {
+        font-weight: 600;
+        font-size: 0.9rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    
+    .file-attachment-size {
+        font-size: 0.8rem;
+        opacity: 0.7;
+    }
+    
     .message-info {
         display: flex;
         align-items: center;
@@ -757,6 +955,31 @@
         display: flex;
         gap: 15px;
         align-items: center;
+    }
+    
+    .input-actions {
+        display: flex;
+        gap: 8px;
+    }
+    
+    .action-button {
+        width: 45px;
+        height: 45px;
+        border-radius: 50%;
+        border: none;
+        background: #f8f9fa;
+        color: #667eea;
+        cursor: pointer;
+        transition: all 0.3s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.2rem;
+    }
+    
+    .action-button:hover {
+        background: #e9ecef;
+        transform: scale(1.1);
     }
     
     .message-input {
@@ -849,7 +1072,7 @@
 <div class="modal-overlay" id="deleteModal">
     <div class="modal-content">
         <div class="modal-header">
-            <div class="modal-icon">
+            <div class="modal-icon warning">
                 <i class="fas fa-exclamation-triangle"></i>
             </div>
             <div class="modal-title">Xác nhận xóa</div>
@@ -863,6 +1086,87 @@
             </button>
             <button class="modal-btn modal-btn-delete" onclick="confirmDelete()">
                 Xóa
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- File Share Modal -->
+<div class="modal-overlay" id="fileShareModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <div class="modal-icon">
+                <i class="fas fa-file-upload"></i>
+            </div>
+            <div class="modal-title">Chia sẻ file</div>
+        </div>
+        <div class="modal-body">
+            <p style="margin-bottom: 15px;">Chọn file đã upload hoặc tải file mới lên:</p>
+            
+            <!-- Existing Files -->
+            <div class="file-list" id="existingFilesList">
+                <p style="text-align: center; color: #6c757d;">Đang tải danh sách file...</p>
+            </div>
+            
+            <!-- Upload New File -->
+            <div class="upload-section">
+                <h6 style="margin-bottom: 15px; color: #495057;">Hoặc tải file mới lên</h6>
+                <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
+                    <div class="upload-icon">
+                        <i class="fas fa-cloud-upload-alt"></i>
+                    </div>
+                    <div class="upload-text">
+                        <strong>Nhấn để chọn file</strong> hoặc kéo thả file vào đây
+                    </div>
+                    <div class="upload-hint">
+                        File sẽ được upload dưới chế độ công khai
+                    </div>
+                </div>
+                <input type="file" id="fileInput" accept="*/*">
+                
+                <!-- Selected File Display -->
+                <div class="selected-file" id="selectedFileDisplay">
+                    <i class="fas fa-file"></i>
+                    <div class="selected-file-info">
+                        <div class="selected-file-name" id="selectedFileName">filename.pdf</div>
+                        <div class="selected-file-size" id="selectedFileSize">2.5 MB</div>
+                    </div>
+                    <button class="remove-file" onclick="clearSelectedFile()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="modal-actions">
+            <button class="modal-btn modal-btn-cancel" onclick="closeFileShareModal()">
+                Hủy
+            </button>
+            <button class="modal-btn modal-btn-primary" onclick="sendSelectedFile()">
+                Gửi file
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Upload Confirmation Modal -->
+<div class="modal-overlay" id="uploadConfirmModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <div class="modal-icon">
+                <i class="fas fa-info-circle"></i>
+            </div>
+            <div class="modal-title">Xác nhận upload</div>
+        </div>
+        <div class="modal-body">
+            <p>File này sẽ được upload lên hệ thống dưới <strong>chế độ công khai</strong>.</p>
+            <p style="margin-top: 10px;">Bạn có muốn tiếp tục?</p>
+        </div>
+        <div class="modal-actions">
+            <button class="modal-btn modal-btn-cancel" onclick="closeUploadConfirmModal()">
+                Hủy
+            </button>
+            <button class="modal-btn modal-btn-primary" onclick="confirmUploadAndSend()">
+                Xác nhận & Gửi
             </button>
         </div>
     </div>
@@ -990,6 +1294,9 @@
     let loadedMessageIds = new Set();
     let pendingDeleteType = null;
     let pendingDeleteId = null;
+    let selectedFile = null;
+    let selectedExistingFile = null;
+    let myFiles = [];
     
     // Get current user ID
     fetch('/get_my_userid')
@@ -1023,7 +1330,7 @@
         document.getElementById('toast').classList.remove('show');
     }
     
-    // Modal functions
+    // Delete Modal functions
     function showDeleteModal(type, id) {
         pendingDeleteType = type;
         pendingDeleteId = id;
@@ -1066,10 +1373,235 @@
             });
     }
     
+    // File Share Modal functions
+    function openFileShareModal() {
+        document.getElementById('fileShareModal').classList.add('show');
+        loadMyFiles();
+    }
+    
+    function closeFileShareModal() {
+        document.getElementById('fileShareModal').classList.remove('show');
+        clearSelectedFile();
+        selectedExistingFile = null;
+    }
+    
+    function loadMyFiles() {
+        const filesList = document.getElementById('existingFilesList');
+        filesList.innerHTML = '<p style="text-align: center; color: #6c757d;">Đang tải...</p>';
+        
+        fetch('/get_my_files')
+            .then(res => res.json())
+            .then(data => {
+                if (data.error) {
+                    filesList.innerHTML = '<p style="text-align: center; color: #dc3545;">Lỗi tải danh sách file</p>';
+                    return;
+                }
+                
+                myFiles = data.files || [];
+                
+                if (myFiles.length === 0) {
+                    filesList.innerHTML = '<p style="text-align: center; color: #6c757d;">Chưa có file nào</p>';
+                    return;
+                }
+                
+                filesList.innerHTML = '';
+                myFiles.forEach(file => {
+                    const fileItem = document.createElement('div');
+                    fileItem.className = 'file-item';
+                    fileItem.innerHTML = `
+                        <i class="fas fa-file"></i>
+                        <div class="file-info">
+                            <div class="file-name">${file.original_filename}</div>
+                            <div class="file-meta">${file.size} • ${file.visibility}</div>
+                        </div>
+                    `;
+                    fileItem.onclick = () => selectExistingFile(file, fileItem);
+                    filesList.appendChild(fileItem);
+                });
+            })
+            .catch(err => {
+                console.error('Error loading files:', err);
+                filesList.innerHTML = '<p style="text-align: center; color: #dc3545;">Lỗi tải danh sách file</p>';
+            });
+    }
+    
+    function selectExistingFile(file, element) {
+        document.querySelectorAll('.file-item').forEach(item => item.classList.remove('selected'));
+        element.classList.add('selected');
+        selectedExistingFile = file;
+        clearSelectedFile();
+    }
+    
+    // File upload handling
+    const fileInput = document.getElementById('fileInput');
+    const uploadArea = document.getElementById('uploadArea');
+    
+    fileInput.addEventListener('change', handleFileSelect);
+    
+    uploadArea.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadArea.classList.add('dragover');
+    });
+    
+    uploadArea.addEventListener('dragleave', () => {
+        uploadArea.classList.remove('dragover');
+    });
+    
+    uploadArea.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadArea.classList.remove('dragover');
+        if (e.dataTransfer.files.length > 0) {
+            fileInput.files = e.dataTransfer.files;
+            handleFileSelect();
+        }
+    });
+    
+    function handleFileSelect() {
+        if (fileInput.files.length > 0) {
+            selectedFile = fileInput.files[0];
+            displaySelectedFile(selectedFile);
+            selectedExistingFile = null;
+            document.querySelectorAll('.file-item').forEach(item => item.classList.remove('selected'));
+        }
+    }
+    
+    function displaySelectedFile(file) {
+        const display = document.getElementById('selectedFileDisplay');
+        const fileName = document.getElementById('selectedFileName');
+        const fileSize = document.getElementById('selectedFileSize');
+        
+        fileName.textContent = file.name;
+        fileSize.textContent = formatFileSize(file.size);
+        display.classList.add('show');
+    }
+    
+    function clearSelectedFile() {
+        selectedFile = null;
+        fileInput.value = '';
+        document.getElementById('selectedFileDisplay').classList.remove('show');
+    }
+    
+    function formatFileSize(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+    }
+    
+    // Upload Confirmation Modal
+    function closeUploadConfirmModal() {
+        document.getElementById('uploadConfirmModal').classList.remove('show');
+    }
+    
+    function sendSelectedFile() {
+        if (selectedExistingFile) {
+            // Send existing file
+            shareExistingFile();
+        } else if (selectedFile) {
+            // Show confirmation for new file
+            document.getElementById('uploadConfirmModal').classList.add('show');
+        } else {
+            showToast('Vui lòng chọn file', 'error');
+        }
+    }
+    
+    function confirmUploadAndSend() {
+        closeUploadConfirmModal();
+        uploadAndShareFile();
+    }
+    
+    function shareExistingFile() {
+        if (!currentChatType || !currentChatId) {
+            showToast('Vui lòng chọn cuộc trò chuyện', 'error');
+            return;
+        }
+        
+        fetch('/share_file_to_chat', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                filename: selectedExistingFile.filename,
+                chat_type: currentChatType,
+                chat_id: currentChatId
+            })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                showToast('Đã gửi file thành công', 'success');
+                closeFileShareModal();
+                if (currentChatType === 'group') {
+                    loadGroupMessages(currentChatId);
+                } else {
+                    loadPrivateMessages(currentChatId);
+                }
+            } else {
+                showToast(data.error || 'Lỗi khi gửi file', 'error');
+            }
+        })
+        .catch(err => {
+            console.error('Error sharing file:', err);
+            showToast('Có lỗi xảy ra', 'error');
+        });
+    }
+    
+    function uploadAndShareFile() {
+        if (!currentChatType || !currentChatId) {
+            showToast('Vui lòng chọn cuộc trò chuyện', 'error');
+            return;
+        }
+        
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+        formData.append('visibility', 'public');
+        
+        showToast('Đang upload file...', 'success');
+        
+        fetch('/upload_chat_file', {
+            method: 'POST',
+            body: formData
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success && data.file) {
+                // File uploaded, now share it
+                return fetch('/share_file_to_chat', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        filename: data.file.filename,
+                        chat_type: currentChatType,
+                        chat_id: currentChatId
+                    })
+                });
+            } else {
+                throw new Error(data.error || 'Upload failed');
+            }
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                showToast('Đã upload và gửi file thành công', 'success');
+                closeFileShareModal();
+                if (currentChatType === 'group') {
+                    loadGroupMessages(currentChatId);
+                } else {
+                    loadPrivateMessages(currentChatId);
+                }
+            } else {
+                showToast(data.error || 'Lỗi khi gửi file', 'error');
+            }
+        })
+        .catch(err => {
+            console.error('Error uploading file:', err);
+            showToast(err.message || 'Có lỗi xảy ra', 'error');
+        });
+    }
+    
     // Load chat when clicking conversation item
     document.querySelectorAll('.conversation-item').forEach(item => {
         item.addEventListener('click', function(e) {
-            // Don't trigger if clicking on avatar link
             if (e.target.closest('a')) return;
             
             const type = this.dataset.type;
@@ -1116,6 +1648,11 @@
             <div class="messages-container" id="messagesContainer"></div>
             <div class="message-input-area">
                 <div class="message-input-wrapper">
+                    <div class="input-actions">
+                        <button class="action-button" onclick="openFileShareModal()" title="Gửi file">
+                            <i class="fas fa-paperclip"></i>
+                        </button>
+                    </div>
                     <input type="text" class="message-input" id="messageInput" placeholder="Nhập tin nhắn..." onkeypress="if(event.key==='Enter') sendMessage()">
                     <button class="send-btn" onclick="sendMessage()">
                         <i class="fas fa-paper-plane"></i>
@@ -1157,6 +1694,11 @@
             <div class="messages-container" id="messagesContainer"></div>
             <div class="message-input-area">
                 <div class="message-input-wrapper">
+                    <div class="input-actions">
+                        <button class="action-button" onclick="openFileShareModal()" title="Gửi file">
+                            <i class="fas fa-paperclip"></i>
+                        </button>
+                    </div>
                     <input type="text" class="message-input" id="messageInput" placeholder="Nhập tin nhắn..." onkeypress="if(event.key==='Enter') sendMessage()">
                     <button class="send-btn" onclick="sendMessage()">
                         <i class="fas fa-paper-plane"></i>
@@ -1237,10 +1779,32 @@
         const time = msg.createdat || msg.CreatedAt;
         const sender = username;
         
+        // Check for file attachment
+        let fileAttachmentHtml = '';
+        if (msg.file_attachment) {
+            const fileData = typeof msg.file_attachment === 'string' 
+                ? JSON.parse(msg.file_attachment) 
+                : msg.file_attachment;
+            
+            fileAttachmentHtml = `
+                <div class="file-attachment" onclick="window.open('${fileData.url}', '_blank')">
+                    <i class="fas fa-file file-attachment-icon"></i>
+                    <div class="file-attachment-info">
+                        <div class="file-attachment-name">${fileData.original_filename}</div>
+                        <div class="file-attachment-size">${fileData.size}</div>
+                    </div>
+                    <i class="fas fa-download"></i>
+                </div>
+            `;
+        }
+        
         messageDiv.innerHTML = `
             <div class="message-avatar">${avatarHtml}</div>
             <div class="message-content">
-                <div class="message-bubble">${content}</div>
+                <div class="message-bubble">
+                    ${content}
+                    ${fileAttachmentHtml}
+                </div>
                 <div class="message-info">
                     <span class="message-sender">${sender}</span>
                     <span class="message-time">${formatTime(time)}</span>
@@ -1478,10 +2042,22 @@
         }
     });
     
-    // Close modal on overlay click
+    // Close modals on overlay click
     document.getElementById('deleteModal').addEventListener('click', function(e) {
         if (e.target === this) {
             closeDeleteModal();
+        }
+    });
+    
+    document.getElementById('fileShareModal').addEventListener('click', function(e) {
+        if (e.target === this) {
+            closeFileShareModal();
+        }
+    });
+    
+    document.getElementById('uploadConfirmModal').addEventListener('click', function(e) {
+        if (e.target === this) {
+            closeUploadConfirmModal();
         }
     });
 </script>

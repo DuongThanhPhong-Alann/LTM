@@ -10,7 +10,7 @@ from services.user_service import UserService
 import base64
 
 app = Flask(__name__)
-app.secret_key = 'your_secret_key_here'  # Thay đổi thành một key bí mật thực tế
+app.secret_key = 'your_secret_key_here'
 
 # Cấu hình Supabase
 SUPABASE_URL = "https://qrzycoatheltpfiztkeh.supabase.co"
@@ -957,6 +957,189 @@ def delete_private_messages(userid):
         supabase_client.table('privatemessages').delete().eq('senderid', userid).eq('receiverid', my_id).execute()
         
         return jsonify({"success": True, "message": "Đã xóa tất cả tin nhắn riêng"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# ==================== FILE SHARING IN CHAT ====================
+
+@app.route('/get_my_files')
+def get_my_files():
+    """Lấy danh sách file của user để share"""
+    if 'user' not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    
+    try:
+        # Lấy file public và private của user
+        files = storage_service.list_files(
+            current_user=session['user'],
+            public_only=False
+        )
+        
+        # Format cho dropdown
+        file_list = []
+        for file in files:
+            metadata = file.get('metadata', {})
+            file_list.append({
+                'filename': file['name'],
+                'original_filename': metadata.get('original_filename', file['name']),
+                'size': metadata.get('size_display', 'N/A'),
+                'visibility': 'Công khai' if metadata.get('is_public') else 'Riêng tư'
+            })
+        
+        return jsonify({"files": file_list}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/upload_chat_file', methods=['POST'])
+def upload_chat_file():
+    """Upload file mới từ chat"""
+    if 'user' not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    
+    if 'file' not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"error": "No file selected"}), 400
+    
+    # Đọc file
+    file_content = file.read()
+    if len(file_content) == 0:
+        return jsonify({"error": "Empty file"}), 400
+    
+    # Lấy visibility từ request (default: public)
+    visibility = request.form.get('visibility', 'public')
+    is_public = visibility == 'public'
+    
+    # Upload file
+    success = storage_service.upload_file(
+        file_content,
+        file.filename,
+        file.content_type,
+        session['user'],
+        is_public
+    )
+    
+    if isinstance(success, dict) and success.get('success'):
+        # Lấy thông tin file vừa upload
+        files = storage_service.list_files(
+            current_user=session['user'],
+            public_only=False
+        )
+        
+        # Tìm file vừa upload
+        uploaded_file = None
+        for f in files:
+            metadata = f.get('metadata', {})
+            if metadata.get('original_filename') == file.filename:
+                uploaded_file = {
+                    'filename': f['name'],
+                    'original_filename': metadata.get('original_filename'),
+                    'size': metadata.get('size_display'),
+                    'url': url_for('download', filename=f['name'], _external=True)
+                }
+                break
+        
+        return jsonify({
+            "success": True,
+            "file": uploaded_file
+        }), 200
+    else:
+        error_msg = success.get('error', 'Upload failed') if isinstance(success, dict) else 'Upload failed'
+        return jsonify({"error": error_msg}), 500
+
+@app.route('/share_file_to_chat', methods=['POST'])
+def share_file_to_chat():
+    """Share file đã có vào chat"""
+    if 'user' not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    
+    data = request.get_json()
+    filename = data.get('filename')
+    chat_type = data.get('chat_type')  # 'group' or 'private'
+    chat_id = data.get('chat_id')
+    
+    if not all([filename, chat_type, chat_id]):
+        return jsonify({"error": "Missing parameters"}), 400
+    
+    try:
+        # Lấy thông tin file
+        files = storage_service.list_files(
+            current_user=session['user'],
+            public_only=False
+        )
+        
+        file_info = None
+        for f in files:
+            if f['name'] == filename:
+                metadata = f.get('metadata', {})
+                file_info = {
+                    'filename': f['name'],
+                    'original_filename': metadata.get('original_filename'),
+                    'size': metadata.get('size_display'),
+                    'url': url_for('download', filename=f['name'], _external=True)
+                }
+                break
+        
+        if not file_info:
+            return jsonify({"error": "File not found"}), 404
+        
+        # Lấy user ID
+        my_res = supabase_client.table('users').select('userid, username, avatar_url').eq('username', session['user']).execute()
+        if not my_res.data:
+            return jsonify({"error": "User not found"}), 400
+        
+        my_id = my_res.data[0]['userid']
+        my_username = my_res.data[0]['username']
+        my_avatar = my_res.data[0].get('avatar_url')
+        
+        # Tạo message với file attachment
+        message_content = f"📎 Đã chia sẻ file: {file_info['original_filename']}"
+        
+        if chat_type == 'group':
+            # Send to group
+            res = supabase_client.table('chatroommessages').insert({
+                'userid': my_id,
+                'roomid': int(chat_id),
+                'content': message_content,
+                'file_attachment': file_info,
+                'createdat': datetime.now().isoformat()
+            }).execute()
+            
+            if res.data:
+                return jsonify({
+                    "success": True,
+                    "message": {
+                        **res.data[0],
+                        'username': my_username,
+                        'avatar_url': my_avatar,
+                        'file_attachment': file_info
+                    }
+                }), 200
+        else:
+            # Send to private chat
+            res = supabase_client.table('privatemessages').insert({
+                'senderid': my_id,
+                'receiverid': int(chat_id),
+                'content': message_content,
+                'file_attachment': file_info,
+                'createdat': datetime.now().isoformat()
+            }).execute()
+            
+            if res.data:
+                return jsonify({
+                    "success": True,
+                    "message": {
+                        **res.data[0],
+                        'username': my_username,
+                        'avatar_url': my_avatar,
+                        'file_attachment': file_info
+                    }
+                }), 200
+        
+        return jsonify({"error": "Failed to send"}), 500
+        
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

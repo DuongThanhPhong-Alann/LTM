@@ -1,53 +1,2064 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="container mt-4">
-    <h2>Phòng Chat Chung</h2>
-    <div class="row">
-        <div class="col-md-4">
-            <h5>Danh sách phòng</h5>
-            {% if rooms|length == 0 %}
-                <div class="alert alert-warning">Chưa có phòng chat chung nào!</div>
-            {% else %}
-            <ul class="list-group mb-3">
-                {% for room in rooms %}
-                <li class="list-group-item d-flex justify-content-between align-items-center">
-                    {{ room.roomname }}
-                    <a href="{{ url_for('group_chat', roomid=room.roomid) }}" class="btn btn-sm btn-outline-primary">Vào phòng chat</a>
-                </li>
-                {% endfor %}
-            </ul>
-            {% endif %}
-            <h5>Danh sách tài khoản</h5>
-            <ul class="list-group mb-3">
-                {% for user in private_users %}
-                <li class="list-group-item d-flex justify-content-between align-items-center">
-                    {{ user.username }}
-                    <a href="{{ url_for('private_chat', userid=user.userid) }}" class="btn btn-sm btn-outline-primary">Chat riêng</a>
-                </li>
-                {% endfor %}
-            </ul>
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    
+    * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        font-family: 'Inter', sans-serif;
+    }
+    
+    body {
+        background: linear-gradient(135deg, #0ea5e9 0%, #10b981 100%);
+        height: 100vh;
+        overflow: hidden;
+    }
+    
+    .chat-container {
+        height: 100vh;
+        display: flex;
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+    }
+    
+    /* Back Button */
+    .back-button {
+        position: fixed;
+        top: 20px;
+        left: 20px;
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        background: white;
+        border: none;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+        cursor: pointer;
+        z-index: 1000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #0ea5e9;
+        font-size: 1.2rem;
+        transition: all 0.3s;
+    }
+    
+    .back-button:hover {
+        transform: scale(1.1);
+        box-shadow: 0 6px 20pxrgba(14, 165, 233, 0.4);
+        background: linear-gradient(135deg, #0ea5e9 0%, #10b981 100%);
+        color: white;
+    }
+    
+    /* Modal & Toast */
+    .modal-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 2000;
+        align-items: center;
+        justify-content: center;
+        animation: fadeIn 0.3s ease;
+    }
+    
+    .modal-overlay.show {
+        display: flex;
+    }
+    
+    .modal-content {
+        background: white;
+        border-radius: 20px;
+        padding: 30px;
+        max-width: 500px;
+        width: 90%;
+        max-height: 80vh;
+        overflow-y: auto;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        animation: slideUp 0.3s ease;
+    }
+    
+    @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+    
+    @keyframes slideUp {
+        from { 
+            opacity: 0;
+            transform: translateY(30px);
+        }
+        to { 
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    .modal-header {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        margin-bottom: 20px;
+    }
+    
+    .modal-icon {
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #0ea5e9 0%, #10b981 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 1.5rem;
+    }
+    
+    .modal-icon.warning {
+        background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+    }
+    
+    .modal-title {
+        font-size: 1.3rem;
+        font-weight: 700;
+        color: #212529;
+    }
+    
+    .modal-body {
+        margin-bottom: 25px;
+        color: #6c757d;
+        line-height: 1.6;
+    }
+    
+    .modal-actions {
+        display: flex;
+        gap: 10px;
+        justify-content: flex-end;
+    }
+    
+    .modal-btn {
+        padding: 12px 24px;
+        border: none;
+        border-radius: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s;
+        font-size: 0.95rem;
+    }
+    
+    .modal-btn-cancel {
+        background: #f8f9fa;
+        color: #495057;
+    }
+    
+    .modal-btn-cancel:hover {
+        background: #e9ecef;
+    }
+    
+    .modal-btn-primary {
+        background: linear-gradient(135deg, #0ea5e9 0%, #10b981 100%);
+        color: white;
+    }
+    
+    .modal-btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20pxrgba(14, 165, 233, 0.4);
+    }
+    
+    .modal-btn-delete {
+        background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+        color: white;
+    }
+    
+    .modal-btn-delete:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(238, 90, 111, 0.4);
+    }
+    
+    /* File List in Modal */
+    .file-list {
+        max-height: 300px;
+        overflow-y: auto;
+        margin: 20px 0;
+    }
+    
+    .file-item {
+        padding: 12px;
+        margin-bottom: 8px;
+        border-radius: 8px;
+        background: #f8f9fa;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+    
+    .file-item:hover {
+        background: #e9ecef;
+        transform: translateX(5px);
+    }
+    
+    .file-item.selected {
+        background: linear-gradient(135deg, #0ea5e9 0%, #10b981 100%);
+        color: white;
+    }
+    
+    .file-item i {
+        font-size: 1.5rem;
+    }
+    
+    .file-info {
+        flex: 1;
+    }
+    
+    .file-name {
+        font-weight: 600;
+        margin-bottom: 4px;
+    }
+    
+    .file-meta {
+        font-size: 0.85rem;
+        opacity: 0.7;
+    }
+    
+    .upload-section {
+        margin-top: 20px;
+        padding-top: 20px;
+        border-top: 2px dashed #dee2e6;
+    }
+    
+    .upload-area {
+        border: 2px dashed #0ea5e9;
+        border-radius: 12px;
+        padding: 30px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.3s;
+        background: #f8f9fa;
+    }
+    
+    .upload-area:hover {
+        background: #e7f3ff;
+        border-color: #10b981;
+    }
+    
+    .upload-area.dragover {
+        background: #e7f3ff;
+        border-color: #10b981;
+        transform: scale(1.02);
+    }
+    
+    .upload-icon {
+        font-size: 3rem;
+        color: #0ea5e9;
+        margin-bottom: 10px;
+    }
+    
+    .upload-text {
+        color: #6c757d;
+        margin-bottom: 10px;
+    }
+    
+    .upload-hint {
+        font-size: 0.85rem;
+        color: #adb5bd;
+    }
+    
+    #fileInput {
+        display: none;
+    }
+    
+    .selected-file {
+        margin-top: 15px;
+        padding: 10px;
+        background: #e7f3ff;
+        border-radius: 8px;
+        display: none;
+        align-items: center;
+        gap: 10px;
+    }
+    
+    .selected-file.show {
+        display: flex;
+    }
+    
+    .selected-file i {
+        color: #0ea5e9;
+        font-size: 1.2rem;
+    }
+    
+    .selected-file-info {
+        flex: 1;
+    }
+    
+    .selected-file-name {
+        font-weight: 600;
+        color: #212529;
+    }
+    
+    .selected-file-size {
+        font-size: 0.85rem;
+        color: #6c757d;
+    }
+    
+    .remove-file {
+        background: none;
+        border: none;
+        color: #dc3545;
+        cursor: pointer;
+        padding: 5px;
+    }
+    
+    /* Toast Notification */
+    .toast {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: white;
+        padding: 15px 20px;
+        border-radius: 12px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+        display: none;
+        align-items: center;
+        gap: 12px;
+        z-index: 3000;
+        animation: slideInRight 0.3s ease;
+        max-width: 350px;
+    }
+    
+    @keyframes slideInRight {
+        from {
+            opacity: 0;
+            transform: translateX(100px);
+        }
+        to {
+            opacity: 1;
+            transform: translateX(0);
+        }
+    }
+    
+    .toast.show {
+        display: flex;
+    }
+    
+    .toast.success {
+        border-left: 4px solid #28a745;
+    }
+    
+    .toast.error {
+        border-left: 4px solid #dc3545;
+    }
+    
+    .toast-icon {
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+    
+    .toast.success .toast-icon {
+        background: #d4edda;
+        color: #28a745;
+    }
+    
+    .toast.error .toast-icon {
+        background: #f8d7da;
+        color: #dc3545;
+    }
+    
+    .toast-message {
+        flex: 1;
+        font-size: 0.95rem;
+        color: #212529;
+    }
+    
+    .toast-close {
+        background: none;
+        border: none;
+        color: #6c757d;
+        cursor: pointer;
+        padding: 0;
+        width: 20px;
+        height: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    /* Sidebar - giữ nguyên code cũ */
+    .sidebar {
+        width: 350px;
+        background: linear-gradient(180deg, #ffffff 0%, #f8f9fa 100%);
+        border-right: 1px solid rgba(0, 0, 0, 0.08);
+        display: flex;
+        flex-direction: column;
+        box-shadow: 4px 0 24px rgba(0, 0, 0, 0.06);
+    }
+    
+    .sidebar-header {
+        padding: 20px;
+        background: linear-gradient(135deg, #0ea5e9 0%, #10b981 100%);
+        color: white;
+    }
+    
+    .sidebar-header h4 {
+        margin: 0;
+        font-weight: 700;
+        font-size: 1.5rem;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+    
+    .sidebar-header p {
+        margin: 5px 0 0 0;
+        opacity: 0.9;
+        font-size: 0.9rem;
+    }
+    
+    .user-profile-link {
+        color: white;
+        text-decoration: none;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 10px;
+        padding: 8px 12px;
+        border-radius: 8px;
+        transition: all 0.3s;
+        background: rgba(255, 255, 255, 0.1);
+    }
+    
+    .user-profile-link:hover {
+        background: rgba(255, 255, 255, 0.2);
+        transform: translateX(5px);
+    }
+    
+    .user-profile-avatar {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background: white;
+        color: #0ea5e9;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 600;
+        font-size: 0.9rem;
+        overflow: hidden;
+    }
+    
+    .user-profile-avatar img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    
+    .search-box {
+        padding: 15px 20px;
+        background: white;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    }
+    
+    .search-input {
+        width: 100%;
+        padding: 12px 40px 12px 15px;
+        border: 2px solid #e9ecef;
+        border-radius: 12px;
+        font-size: 0.95rem;
+        transition: all 0.3s;
+        background: #f8f9fa;
+    }
+    
+    .search-input:focus {
+        outline: none;
+        border-color: #0ea5e9;
+        background: white;
+        box-shadow: 0 0 0 4pxrgba(14, 165, 233, 0.1);
+    }
+    
+    .search-wrapper {
+        position: relative;
+    }
+    
+    .search-icon {
+        position: absolute;
+        right: 15px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #adb5bd;
+    }
+    
+    .new-chat-btn {
+        width: 100%;
+        padding: 12px;
+        background: linear-gradient(135deg, #0ea5e9 0%, #10b981 100%);
+        color: white;
+        border: none;
+        border-radius: 12px;
+        font-weight: 600;
+        margin-top: 10px;
+        cursor: pointer;
+        transition: all 0.3s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+    }
+    
+    .new-chat-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20pxrgba(14, 165, 233, 0.4);
+    }
+    
+    .conversations-list {
+        flex: 1;
+        overflow-y: auto;
+        padding: 10px;
+    }
+    
+    .conversation-item {
+        padding: 15px;
+        margin-bottom: 8px;
+        border-radius: 12px;
+        cursor: pointer;
+        transition: all 0.3s;
+        position: relative;
+        background: white;
+        border: 2px solid transparent;
+        display: flex;
+        align-items: center;
+    }
+    
+    .conversation-item:hover {
+        background: #f8f9fa;
+        transform: translateX(5px);
+        border-color: #0ea5e9;
+    }
+    
+    .conversation-item.active {
+        background: linear-gradient(135deg, #0ea5e9 0%, #10b981 100%);
+        color: white;
+        box-shadow: 0 4px 15pxrgba(14, 165, 233, 0.3);
+    }
+    
+    .conversation-avatar {
+        width: 45px;
+        height: 45px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #0ea5e9 0%, #10b981 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-weight: 600;
+        font-size: 1.2rem;
+        margin-right: 15px;
+        position: relative;
+        overflow: hidden;
+        flex-shrink: 0;
+    }
+    
+    .conversation-avatar img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    
+    .conversation-avatar:hover {
+        transform: scale(1.05);
+        transition: transform 0.2s;
+    }
+    
+    .status-indicator {
+        position: absolute;
+        bottom: 2px;
+        right: 2px;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: #22c55e;
+        border: 2px solid white;
+    }
+    
+    .status-indicator.offline {
+        background: #94a3b8;
+    }
+    
+    .conversation-item.active .conversation-avatar {
+        background: white;
+        color: #0ea5e9;
+    }
+    
+    .conversation-info {
+        flex: 1;
+        min-width: 0;
+    }
+    
+    .conversation-name {
+        font-weight: 600;
+        margin-bottom: 4px;
+        font-size: 1rem;
+    }
+    
+    .conversation-preview {
+        font-size: 0.85rem;
+        opacity: 0.7;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    
+    .conversation-menu {
+        position: relative;
+    }
+    
+    .menu-btn {
+        background: none;
+        border: none;
+        color: inherit;
+        font-size: 1.2rem;
+        padding: 5px 10px;
+        cursor: pointer;
+        opacity: 0;
+        transition: all 0.3s;
+    }
+    
+    .conversation-item:hover .menu-btn,
+    .conversation-item.active .menu-btn {
+        opacity: 1;
+    }
+    
+    .delete-menu {
+        position: absolute;
+        right: 50px;
+        top: 50%;
+        transform: translateY(-50%);
+        background: white;
+        border: 1px solid rgba(0, 0, 0, 0.1);
+        border-radius: 12px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+        padding: 8px;
+        z-index: 1000;
+        display: none;
+        min-width: 150px;
+    }
+    
+    .delete-menu.show {
+        display: block;
+    }
+    
+    .delete-menu-item {
+        padding: 10px 15px;
+        cursor: pointer;
+        border-radius: 8px;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: #dc3545;
+        font-size: 0.9rem;
+        white-space: nowrap;
+    }
+    
+    .delete-menu-item:hover {
+        background: #fee;
+    }
+    
+    .delete-menu-item i {
+        font-size: 1rem;
+    }
+    
+    .search-results {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: white;
+        border: 1px solid #e9ecef;
+        border-top: none;
+        border-radius: 0 0 12px 12px;
+        box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+        max-height: 300px;
+        overflow-y: auto;
+        z-index: 100;
+        display: none;
+    }
+    
+    .search-results.show {
+        display: block;
+    }
+    
+    .search-result-item {
+        padding: 12px 15px;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        border-bottom: 1px solid #f8f9fa;
+    }
+    
+    .search-result-item:hover {
+        background: #f8f9fa;
+    }
+    
+    .search-result-item:last-child {
+        border-bottom: none;
+    }
+    
+    .search-result-avatar {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #0ea5e9 0%, #10b981 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-weight: 600;
+        overflow: hidden;
+    }
+    
+    .search-result-avatar img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    
+    .search-result-info {
+        flex: 1;
+    }
+    
+    .search-result-name {
+        font-weight: 600;
+        color: #212529;
+    }
+    
+    .chat-area {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        background: #f8f9fa;
+    }
+    
+    .chat-header {
+        padding: 20px 30px;
+        background: white;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    }
+    
+    .chat-header-info {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+    }
+    
+    .chat-avatar {
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #0ea5e9 0%, #10b981 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-weight: 700;
+        font-size: 1.3rem;
+        overflow: hidden;
+        cursor: pointer;
+        transition: transform 0.2s;
+    }
+    
+    .chat-avatar:hover {
+        transform: scale(1.05);
+    }
+    
+    .chat-avatar img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    
+    .chat-header-text h5 {
+        margin: 0;
+        font-weight: 700;
+        font-size: 1.2rem;
+    }
+    
+    .chat-header-text p {
+        margin: 2px 0 0 0;
+        font-size: 0.85rem;
+        color: #6c757d;
+    }
+    
+    .messages-container {
+        flex: 1;
+        overflow-y: auto;
+        padding: 30px;
+        background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80"><circle cx="40" cy="40" r="1" fill="%23dee2e6"/></svg>') repeat;
+        background-size: 20px 20px;
+    }
+    
+    .message {
+        margin-bottom: 20px;
+        display: flex;
+        gap: 12px;
+        animation: slideIn 0.3s ease-out;
+    }
+    
+    @keyframes slideIn {
+        from {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    .message.sent {
+        flex-direction: row-reverse;
+    }
+    
+    .message-avatar {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #0ea5e9 0%, #10b981 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-weight: 600;
+        flex-shrink: 0;
+        overflow: hidden;
+    }
+    
+    .message-avatar img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    
+    .message-content {
+        max-width: 60%;
+    }
+    
+    .message-bubble {
+        padding: 12px 18px;
+        border-radius: 18px;
+        word-wrap: break-word;
+        position: relative;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    }
+    
+    .message.received .message-bubble {
+        background: white;
+        color: #2d3748;
+        border-bottom-left-radius: 4px;
+    }
+    
+    .message.sent .message-bubble {
+        background: linear-gradient(135deg, #0ea5e9 0%, #10b981 100%);
+        color: white;
+        border-bottom-right-radius: 4px;
+    }
+    
+    /* File attachment styling */
+    .file-attachment {
+        margin-top: 8px;
+        padding: 10px;
+        background: rgba(0, 0, 0, 0.05);
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    
+    .message.sent .file-attachment {
+        background: rgba(255, 255, 255, 0.2);
+    }
+    
+    .file-attachment:hover {
+        background: rgba(0, 0, 0, 0.1);
+    }
+    
+    .message.sent .file-attachment:hover {
+        background: rgba(255, 255, 255, 0.3);
+    }
+    
+    .file-attachment-icon {
+        font-size: 1.5rem;
+    }
+    
+    .file-attachment-info {
+        flex: 1;
+        min-width: 0;
+    }
+    
+    .file-attachment-name {
+        font-weight: 600;
+        font-size: 0.9rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    
+    .file-attachment-size {
+        font-size: 0.8rem;
+        opacity: 0.7;
+    }
+    
+    .message-info {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 4px;
+        font-size: 0.75rem;
+        color: #6c757d;
+    }
+    
+    .message.sent .message-info {
+        flex-direction: row-reverse;
+    }
+    
+    .message-sender {
+        font-weight: 600;
+    }
+    
+    .message-time {
+        opacity: 0.7;
+    }
+    
+    .message-input-area {
+        padding: 20px 30px;
+        background: white;
+        border-top: 1px solid rgba(0, 0, 0, 0.08);
+    }
+    
+    .message-input-wrapper {
+        display: flex;
+        gap: 15px;
+        align-items: center;
+    }
+    
+    .input-actions {
+        display: flex;
+        gap: 8px;
+    }
+    
+    .action-button {
+        width: 45px;
+        height: 45px;
+        border-radius: 50%;
+        border: none;
+        background: #f8f9fa;
+        color: #0ea5e9;
+        cursor: pointer;
+        transition: all 0.3s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.2rem;
+    }
+    
+    .action-button:hover {
+        background: #e9ecef;
+        transform: scale(1.1);
+    }
+    
+    .message-input {
+        flex: 1;
+        padding: 15px 20px;
+        border: 2px solid #e9ecef;
+        border-radius: 25px;
+        font-size: 0.95rem;
+        transition: all 0.3s;
+        background: #f8f9fa;
+    }
+    
+    .message-input:focus {
+        outline: none;
+        border-color: #0ea5e9;
+        background: white;
+        box-shadow: 0 0 0 4pxrgba(14, 165, 233, 0.1);
+    }
+    
+    .send-btn {
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        border: none;
+        background: linear-gradient(135deg, #0ea5e9 0%, #10b981 100%);
+        color: white;
+        font-size: 1.2rem;
+        cursor: pointer;
+        transition: all 0.3s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .send-btn:hover {
+        transform: scale(1.1);
+        box-shadow: 0 8px 20pxrgba(14, 165, 233, 0.4);
+    }
+    
+    .empty-state {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: #6c757d;
+        padding: 40px;
+        text-align: center;
+    }
+    
+    .empty-state i {
+        font-size: 5rem;
+        margin-bottom: 20px;
+        opacity: 0.3;
+    }
+    
+    .empty-state h5 {
+        font-weight: 600;
+        margin-bottom: 10px;
+    }
+    
+    .empty-state p {
+        opacity: 0.7;
+    }
+    
+    ::-webkit-scrollbar {
+        width: 8px;
+    }
+    
+    ::-webkit-scrollbar-track {
+        background: #f1f1f1;
+    }
+    
+    ::-webkit-scrollbar-thumb {
+        background: linear-gradient(135deg, #0ea5e9 0%, #10b981 100%);
+        border-radius: 10px;
+    }
+    
+    ::-webkit-scrollbar-thumb:hover {
+        background: #10b981;
+    }
+</style>
 
-            <a href="{{ url_for('create_room_page') }}" class="btn btn-success mb-2">Tạo phòng chat mới</a>
-            </form>
-        </div>
-        <div class="col-md-8">
-            <h5>Tin nhắn phòng đầu tiên</h5>
-            {% if rooms|length == 0 %}
-                <div class="alert alert-info">Không có tin nhắn vì chưa có phòng chat chung nào.</div>
-            {% else %}
-            <div class="chat-box border rounded p-3 mb-3" style="height:300px;overflow-y:auto;">
-                {% for msg in messages %}
-                <div><strong>{{ msg.UserID }}</strong>: {{ msg.Content }} <span class="text-muted" style="font-size:0.8em">{{ msg.CreatedAt }}</span></div>
-                {% endfor %}
+<!-- Back Button -->
+<button class="back-button" onclick="window.location.href='{{ url_for('index') }}'">
+    <i class="fas fa-arrow-left"></i>
+</button>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal-overlay" id="deleteModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <div class="modal-icon warning">
+                <i class="fas fa-exclamation-triangle"></i>
             </div>
-            <form method="post" action="#">
-                <div class="input-group">
-                    <input type="text" class="form-control" name="message" placeholder="Nhập tin nhắn...">
-                    <button class="btn btn-primary" type="submit">Gửi</button>
-                </div>
-            </form>
-            {% endif %}
+            <div class="modal-title">Xác nhận xóa</div>
+        </div>
+        <div class="modal-body">
+            Bạn có chắc chắn muốn xóa tất cả tin nhắn? Hành động này không thể hoàn tác.
+        </div>
+        <div class="modal-actions">
+            <button class="modal-btn modal-btn-cancel" onclick="closeDeleteModal()">
+                Hủy
+            </button>
+            <button class="modal-btn modal-btn-delete" onclick="confirmDelete()">
+                Xóa
+            </button>
         </div>
     </div>
 </div>
+
+<!-- File Share Modal -->
+<div class="modal-overlay" id="fileShareModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <div class="modal-icon">
+                <i class="fas fa-file-upload"></i>
+            </div>
+            <div class="modal-title">Chia sẻ file</div>
+        </div>
+        <div class="modal-body">
+            <p style="margin-bottom: 15px;">Chọn file đã upload hoặc tải file mới lên:</p>
+            
+            <!-- Existing Files -->
+            <div class="file-list" id="existingFilesList">
+                <p style="text-align: center; color: #6c757d;">Đang tải danh sách file...</p>
+            </div>
+            
+            <!-- Upload New File -->
+            <div class="upload-section">
+                <h6 style="margin-bottom: 15px; color: #495057;">Hoặc tải file mới lên</h6>
+                <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
+                    <div class="upload-icon">
+                        <i class="fas fa-cloud-upload-alt"></i>
+                    </div>
+                    <div class="upload-text">
+                        <strong>Nhấn để chọn file</strong> hoặc kéo thả file vào đây
+                    </div>
+                    <div class="upload-hint">
+                        File sẽ được upload dưới chế độ công khai
+                    </div>
+                </div>
+                <input type="file" id="fileInput" accept="*/*">
+                
+                <!-- Selected File Display -->
+                <div class="selected-file" id="selectedFileDisplay">
+                    <i class="fas fa-file"></i>
+                    <div class="selected-file-info">
+                        <div class="selected-file-name" id="selectedFileName">filename.pdf</div>
+                        <div class="selected-file-size" id="selectedFileSize">2.5 MB</div>
+                    </div>
+                    <button class="remove-file" onclick="clearSelectedFile()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="modal-actions">
+            <button class="modal-btn modal-btn-cancel" onclick="closeFileShareModal()">
+                Hủy
+            </button>
+            <button class="modal-btn modal-btn-primary" onclick="sendSelectedFile()">
+                Gửi file
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Upload Confirmation Modal -->
+<div class="modal-overlay" id="uploadConfirmModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <div class="modal-icon">
+                <i class="fas fa-info-circle"></i>
+            </div>
+            <div class="modal-title">Xác nhận upload</div>
+        </div>
+        <div class="modal-body">
+            <p>File này sẽ được upload lên hệ thống dưới <strong>chế độ công khai</strong>.</p>
+            <p style="margin-top: 10px;">Bạn có muốn tiếp tục?</p>
+        </div>
+        <div class="modal-actions">
+            <button class="modal-btn modal-btn-cancel" onclick="closeUploadConfirmModal()">
+                Hủy
+            </button>
+            <button class="modal-btn modal-btn-primary" onclick="confirmUploadAndSend()">
+                Xác nhận & Gửi
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Toast Notification -->
+<div class="toast" id="toast">
+    <div class="toast-icon">
+        <i class="fas fa-check"></i>
+    </div>
+    <div class="toast-message"></div>
+    <button class="toast-close" onclick="hideToast()">
+        <i class="fas fa-times"></i>
+    </button>
+</div>
+
+<div class="chat-container" data-user-logged-in="true">
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <h4>
+                <i class="fas fa-comments"></i>
+                Tin nhắn
+            </h4>
+            <a href="{{ url_for('view_profile', username=session['user']) }}" class="user-profile-link">
+                <div class="user-profile-avatar">
+                    {% if current_user_avatar %}
+                        <img src="{{ current_user_avatar }}" alt="{{ session['user'] }}">
+                    {% else %}
+                        {{ session['user'][0].upper() }}
+                    {% endif %}
+                </div>
+                <span>{{ session['user'] }}</span>
+            </a>
+        </div>
+        
+        <div class="search-box">
+            <div class="search-wrapper">
+                <input type="text" class="search-input" id="userSearch" placeholder="Tìm kiếm hoặc bắt đầu chat mới...">
+                <i class="fas fa-search search-icon"></i>
+                <div class="search-results" id="searchResults"></div>
+            </div>
+            <a href="{{ url_for('create_room_page') }}" class="new-chat-btn">
+                <i class="fas fa-plus"></i>
+                Tạo nhóm mới
+            </a>
+        </div>
+        
+        <div class="conversations-list" id="conversationsList">
+            {% for room in rooms %}
+            <div class="conversation-item" data-type="group" data-id="{{ room.roomid }}" data-name="{{ room.roomname }}">
+                <div class="conversation-avatar">
+                    <i class="fas fa-users"></i>
+                </div>
+                <div class="conversation-info">
+                    <div class="conversation-name">{{ room.roomname }}</div>
+                    <div class="conversation-preview">Nhóm chat</div>
+                </div>
+                <div class="conversation-menu">
+                    <button class="menu-btn" onclick="showDeleteMenu(event, 'group', {{ room.roomid }})">
+                        <i class="fas fa-ellipsis-v"></i>
+                    </button>
+                </div>
+            </div>
+            {% endfor %}
+            
+            {% for chat in recent_chats %}
+            <div class="conversation-item" data-type="private" data-id="{{ chat.userid }}" data-name="{{ chat.username }}" data-avatar="{{ chat.avatar_url or '' }}" data-online="{{ 'true' if chat.is_online else 'false' }}">
+                <a href="{{ url_for('view_profile', username=chat.username) }}" onclick="event.stopPropagation();" style="text-decoration: none;">
+                    <div class="conversation-avatar">
+                        {% if chat.avatar_url %}
+                            <img src="{{ chat.avatar_url }}" alt="{{ chat.username }}">
+                        {% else %}
+                            {{ chat.username[0].upper() }}
+                        {% endif %}
+                        {% if chat.is_online %}
+                            <span class="status-indicator"></span>
+                        {% else %}
+                            <span class="status-indicator offline"></span>
+                        {% endif %}
+                    </div>
+                </a>
+                <div class="conversation-info">
+                    <div class="conversation-name">{{ chat.username }}</div>
+                    <div class="conversation-preview">{{ chat.last_message[:30] if chat.last_message else 'Chat riêng' }}</div>
+                </div>
+                <div class="conversation-menu">
+                    <button class="menu-btn" onclick="showDeleteMenu(event, 'private', {{ chat.userid }})">
+                        <i class="fas fa-ellipsis-v"></i>
+                    </button>
+                </div>
+            </div>
+            {% endfor %}
+            
+            {% if not rooms and not recent_chats %}
+            <div style="padding: 30px; text-align: center; color: #6c757d;">
+                <i class="fas fa-comment-slash" style="font-size: 3rem; opacity: 0.3; margin-bottom: 10px;"></i>
+                <p style="font-size: 0.9rem;">Chưa có cuộc trò chuyện nào</p>
+                <p style="font-size: 0.85rem; opacity: 0.7;">Tìm kiếm để bắt đầu chat mới</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    
+    <!-- Chat Area -->
+    <div class="chat-area" id="chatArea">
+        <div class="empty-state">
+            <i class="fas fa-comments"></i>
+            <h5>Chọn một cuộc trò chuyện</h5>
+            <p>Chọn từ danh sách bên trái để bắt đầu nhắn tin</p>
+        </div>
+    </div>
+</div>
+
+<script src="{{ url_for('static', filename='activity_tracker.js') }}"></script>
+<script>
+    let currentChatType = null;
+    let currentChatId = null;
+    let currentChatName = null;
+    let currentChatAvatar = null;
+    let currentChatOnline = false;
+    let myUserId = null;
+    let pollingInterval = null;
+    let lastMessageId = 0;
+    let loadedMessageIds = new Set();
+    let pendingDeleteType = null;
+    let pendingDeleteId = null;
+    let selectedFile = null;
+    let selectedExistingFile = null;
+    let myFiles = [];
+    
+    // Get current user ID
+    fetch('/get_my_userid')
+        .then(res => res.json())
+        .then(data => {
+            myUserId = data.userid;
+        })
+        .catch(err => console.error('Error getting user ID:', err));
+    
+    // Toast notification functions
+    function showToast(message, type = 'success') {
+        const toast = document.getElementById('toast');
+        const toastMessage = toast.querySelector('.toast-message');
+        const toastIcon = toast.querySelector('.toast-icon i');
+        
+        toast.className = `toast show ${type}`;
+        toastMessage.textContent = message;
+        
+        if (type === 'success') {
+            toastIcon.className = 'fas fa-check';
+        } else {
+            toastIcon.className = 'fas fa-exclamation-circle';
+        }
+        
+        setTimeout(() => {
+            hideToast();
+        }, 3000);
+    }
+    
+    function hideToast() {
+        document.getElementById('toast').classList.remove('show');
+    }
+    
+    // Delete Modal functions
+    function showDeleteModal(type, id) {
+        pendingDeleteType = type;
+        pendingDeleteId = id;
+        document.getElementById('deleteModal').classList.add('show');
+    }
+    
+    function closeDeleteModal() {
+        document.getElementById('deleteModal').classList.remove('show');
+        pendingDeleteType = null;
+        pendingDeleteId = null;
+    }
+    
+    function confirmDelete() {
+        if (!pendingDeleteType || !pendingDeleteId) return;
+        
+        const url = pendingDeleteType === 'group' 
+            ? `/delete_group_messages/${pendingDeleteId}`
+            : `/delete_private_messages/${pendingDeleteId}`;
+        
+        fetch(url, { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                closeDeleteModal();
+                if (data.success) {
+                    showToast('Đã xóa tin nhắn thành công', 'success');
+                    const container = document.getElementById('messagesContainer');
+                    if (container) {
+                        container.innerHTML = '';
+                    }
+                    loadedMessageIds.clear();
+                    lastMessageId = 0;
+                } else {
+                    showToast('Có lỗi khi xóa tin nhắn', 'error');
+                }
+            })
+            .catch(err => {
+                console.error('Error deleting:', err);
+                closeDeleteModal();
+                showToast('Có lỗi xảy ra', 'error');
+            });
+    }
+    
+    // File Share Modal functions
+    function openFileShareModal() {
+        document.getElementById('fileShareModal').classList.add('show');
+        loadMyFiles();
+    }
+    
+    function closeFileShareModal() {
+        document.getElementById('fileShareModal').classList.remove('show');
+        clearSelectedFile();
+        selectedExistingFile = null;
+    }
+    
+    function loadMyFiles() {
+        const filesList = document.getElementById('existingFilesList');
+        filesList.innerHTML = '<p style="text-align: center; color: #6c757d;">Đang tải...</p>';
+        
+        fetch('/get_my_files')
+            .then(res => res.json())
+            .then(data => {
+                if (data.error) {
+                    filesList.innerHTML = '<p style="text-align: center; color: #dc3545;">Lỗi tải danh sách file</p>';
+                    return;
+                }
+                
+                myFiles = data.files || [];
+                
+                if (myFiles.length === 0) {
+                    filesList.innerHTML = '<p style="text-align: center; color: #6c757d;">Chưa có file nào</p>';
+                    return;
+                }
+                
+                filesList.innerHTML = '';
+                myFiles.forEach(file => {
+                    const fileItem = document.createElement('div');
+                    fileItem.className = 'file-item';
+                    fileItem.innerHTML = `
+                        <i class="fas fa-file"></i>
+                        <div class="file-info">
+                            <div class="file-name">${file.original_filename}</div>
+                            <div class="file-meta">${file.size} • ${file.visibility}</div>
+                        </div>
+                    `;
+                    fileItem.onclick = () => selectExistingFile(file, fileItem);
+                    filesList.appendChild(fileItem);
+                });
+            })
+            .catch(err => {
+                console.error('Error loading files:', err);
+                filesList.innerHTML = '<p style="text-align: center; color: #dc3545;">Lỗi tải danh sách file</p>';
+            });
+    }
+    
+    function selectExistingFile(file, element) {
+        document.querySelectorAll('.file-item').forEach(item => item.classList.remove('selected'));
+        element.classList.add('selected');
+        selectedExistingFile = file;
+        clearSelectedFile();
+    }
+    
+    // File upload handling
+    const fileInput = document.getElementById('fileInput');
+    const uploadArea = document.getElementById('uploadArea');
+    
+    fileInput.addEventListener('change', handleFileSelect);
+    
+    uploadArea.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadArea.classList.add('dragover');
+    });
+    
+    uploadArea.addEventListener('dragleave', () => {
+        uploadArea.classList.remove('dragover');
+    });
+    
+    uploadArea.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadArea.classList.remove('dragover');
+        if (e.dataTransfer.files.length > 0) {
+            fileInput.files = e.dataTransfer.files;
+            handleFileSelect();
+        }
+    });
+    
+    function handleFileSelect() {
+        if (fileInput.files.length > 0) {
+            selectedFile = fileInput.files[0];
+            displaySelectedFile(selectedFile);
+            selectedExistingFile = null;
+            document.querySelectorAll('.file-item').forEach(item => item.classList.remove('selected'));
+        }
+    }
+    
+    function displaySelectedFile(file) {
+        const display = document.getElementById('selectedFileDisplay');
+        const fileName = document.getElementById('selectedFileName');
+        const fileSize = document.getElementById('selectedFileSize');
+        
+        fileName.textContent = file.name;
+        fileSize.textContent = formatFileSize(file.size);
+        display.classList.add('show');
+    }
+    
+    function clearSelectedFile() {
+        selectedFile = null;
+        fileInput.value = '';
+        document.getElementById('selectedFileDisplay').classList.remove('show');
+    }
+    
+    function formatFileSize(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+    }
+    
+    // Upload Confirmation Modal
+    function closeUploadConfirmModal() {
+        document.getElementById('uploadConfirmModal').classList.remove('show');
+    }
+    
+    function sendSelectedFile() {
+        if (selectedExistingFile) {
+            // Send existing file
+            shareExistingFile();
+        } else if (selectedFile) {
+            // Show confirmation for new file
+            document.getElementById('uploadConfirmModal').classList.add('show');
+        } else {
+            showToast('Vui lòng chọn file', 'error');
+        }
+    }
+    
+    function confirmUploadAndSend() {
+        closeUploadConfirmModal();
+        uploadAndShareFile();
+    }
+    
+    function shareExistingFile() {
+        if (!currentChatType || !currentChatId) {
+            showToast('Vui lòng chọn cuộc trò chuyện', 'error');
+            return;
+        }
+        
+        fetch('/share_file_to_chat', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                filename: selectedExistingFile.filename,
+                chat_type: currentChatType,
+                chat_id: currentChatId
+            })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                showToast('Đã gửi file thành công', 'success');
+                closeFileShareModal();
+                if (currentChatType === 'group') {
+                    loadGroupMessages(currentChatId);
+                } else {
+                    loadPrivateMessages(currentChatId);
+                }
+            } else {
+                showToast(data.error || 'Lỗi khi gửi file', 'error');
+            }
+        })
+        .catch(err => {
+            console.error('Error sharing file:', err);
+            showToast('Có lỗi xảy ra', 'error');
+        });
+    }
+    
+    function uploadAndShareFile() {
+        if (!currentChatType || !currentChatId) {
+            showToast('Vui lòng chọn cuộc trò chuyện', 'error');
+            return;
+        }
+        
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+        formData.append('visibility', 'public');
+        
+        showToast('Đang upload file...', 'success');
+        
+        fetch('/upload_chat_file', {
+            method: 'POST',
+            body: formData
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success && data.file) {
+                // File uploaded, now share it
+                return fetch('/share_file_to_chat', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        filename: data.file.filename,
+                        chat_type: currentChatType,
+                        chat_id: currentChatId
+                    })
+                });
+            } else {
+                throw new Error(data.error || 'Upload failed');
+            }
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                showToast('Đã upload và gửi file thành công', 'success');
+                closeFileShareModal();
+                if (currentChatType === 'group') {
+                    loadGroupMessages(currentChatId);
+                } else {
+                    loadPrivateMessages(currentChatId);
+                }
+            } else {
+                showToast(data.error || 'Lỗi khi gửi file', 'error');
+            }
+        })
+        .catch(err => {
+            console.error('Error uploading file:', err);
+            showToast(err.message || 'Có lỗi xảy ra', 'error');
+        });
+    }
+    
+    // Load chat when clicking conversation item
+    document.querySelectorAll('.conversation-item').forEach(item => {
+        item.addEventListener('click', function(e) {
+            if (e.target.closest('a')) return;
+            
+            const type = this.dataset.type;
+            const id = this.dataset.id;
+            const name = this.dataset.name;
+            const avatar = this.dataset.avatar || '';
+            const online = this.dataset.online === 'true';
+            
+            document.querySelectorAll('.conversation-item').forEach(i => i.classList.remove('active'));
+            this.classList.add('active');
+            
+            loadedMessageIds.clear();
+            lastMessageId = 0;
+            
+            currentChatAvatar = avatar;
+            currentChatOnline = online;
+            
+            if (type === 'group') {
+                loadGroupChat(id, name);
+            } else {
+                loadPrivateChat(id, name);
+            }
+        });
+    });
+    
+    function loadGroupChat(roomid, roomname) {
+        currentChatType = 'group';
+        currentChatId = roomid;
+        currentChatName = roomname;
+        
+        const chatArea = document.getElementById('chatArea');
+        chatArea.innerHTML = `
+            <div class="chat-header">
+                <div class="chat-header-info">
+                    <div class="chat-avatar">
+                        <i class="fas fa-users"></i>
+                    </div>
+                    <div class="chat-header-text">
+                        <h5>${roomname}</h5>
+                        <p>Nhóm chat</p>
+                    </div>
+                </div>
+            </div>
+            <div class="messages-container" id="messagesContainer"></div>
+            <div class="message-input-area">
+                <div class="message-input-wrapper">
+                    <div class="input-actions">
+                        <button class="action-button" onclick="openFileShareModal()" title="Gửi file">
+                            <i class="fas fa-paperclip"></i>
+                        </button>
+                    </div>
+                    <input type="text" class="message-input" id="messageInput" placeholder="Nhập tin nhắn..." onkeypress="if(event.key==='Enter') sendMessage()">
+                    <button class="send-btn" onclick="sendMessage()">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        loadGroupMessages(roomid);
+        startPolling();
+    }
+    
+    function loadPrivateChat(userid, username) {
+        currentChatType = 'private';
+        currentChatId = userid;
+        currentChatName = username;
+        
+        const avatarHtml = currentChatAvatar 
+            ? `<img src="${currentChatAvatar}" alt="${username}">`
+            : username[0].toUpperCase();
+        
+        const statusText = currentChatOnline ? 'Đang hoạt động' : 'Offline';
+        
+        const chatArea = document.getElementById('chatArea');
+        chatArea.innerHTML = `
+            <div class="chat-header">
+                <div class="chat-header-info">
+                    <a href="/view_profile/${username}" style="text-decoration: none;">
+                        <div class="chat-avatar">
+                            ${avatarHtml}
+                        </div>
+                    </a>
+                    <div class="chat-header-text">
+                        <h5>${username}</h5>
+                        <p>${statusText}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="messages-container" id="messagesContainer"></div>
+            <div class="message-input-area">
+                <div class="message-input-wrapper">
+                    <div class="input-actions">
+                        <button class="action-button" onclick="openFileShareModal()" title="Gửi file">
+                            <i class="fas fa-paperclip"></i>
+                        </button>
+                    </div>
+                    <input type="text" class="message-input" id="messageInput" placeholder="Nhập tin nhắn..." onkeypress="if(event.key==='Enter') sendMessage()">
+                    <button class="send-btn" onclick="sendMessage()">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        loadPrivateMessages(userid);
+        startPolling();
+    }
+    
+    function loadGroupMessages(roomid) {
+        fetch(`/group_chat/messages/${roomid}?after=${lastMessageId}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.messages && data.messages.length > 0) {
+                    data.messages.forEach(msg => {
+                        const msgId = msg.messageid || msg.MessageID;
+                        if (!loadedMessageIds.has(msgId)) {
+                            const isSent = msg.userid === myUserId;
+                            appendMessage(msg, isSent);
+                            loadedMessageIds.add(msgId);
+                            lastMessageId = Math.max(lastMessageId, msgId);
+                        }
+                    });
+                    scrollToBottom();
+                }
+            })
+            .catch(err => console.error('Error loading messages:', err));
+    }
+    
+    function loadPrivateMessages(userid) {
+        fetch(`/private_chat/messages/${userid}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.messages && data.messages.length > 0) {
+                    const container = document.getElementById('messagesContainer');
+                    
+                    if (loadedMessageIds.size === 0) {
+                        container.innerHTML = '';
+                        data.messages.forEach(msg => {
+                            const msgId = msg.messageid || msg.MessageID;
+                            const isSent = msg.senderid === myUserId;
+                            appendMessage(msg, isSent);
+                            loadedMessageIds.add(msgId);
+                        });
+                        scrollToBottom();
+                    } else {
+                        data.messages.forEach(msg => {
+                            const msgId = msg.messageid || msg.MessageID;
+                            if (!loadedMessageIds.has(msgId)) {
+                                const isSent = msg.senderid === myUserId;
+                                appendMessage(msg, isSent);
+                                loadedMessageIds.add(msgId);
+                                scrollToBottom();
+                            }
+                        });
+                    }
+                }
+            })
+            .catch(err => console.error('Error loading messages:', err));
+    }
+    
+    function appendMessage(msg, isSent) {
+        const container = document.getElementById('messagesContainer');
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message ${isSent ? 'sent' : 'received'}`;
+        messageDiv.dataset.msgid = msg.messageid || msg.MessageID;
+        
+        const username = msg.username || 'User';
+        const avatar = username[0].toUpperCase();
+        const avatarHtml = msg.avatar_url 
+            ? `<img src="${msg.avatar_url}" alt="${username}">`
+            : avatar;
+        
+        const content = msg.content || msg.Content;
+        const time = msg.createdat || msg.CreatedAt;
+        const sender = username;
+        
+        // Check for file attachment
+        let fileAttachmentHtml = '';
+        if (msg.file_attachment) {
+            const fileData = typeof msg.file_attachment === 'string' 
+                ? JSON.parse(msg.file_attachment) 
+                : msg.file_attachment;
+            
+            fileAttachmentHtml = `
+                <div class="file-attachment" onclick="window.open('${fileData.url}', '_blank')">
+                    <i class="fas fa-file file-attachment-icon"></i>
+                    <div class="file-attachment-info">
+                        <div class="file-attachment-name">${fileData.original_filename}</div>
+                        <div class="file-attachment-size">${fileData.size}</div>
+                    </div>
+                    <i class="fas fa-download"></i>
+                </div>
+            `;
+        }
+        
+        messageDiv.innerHTML = `
+            <div class="message-avatar">${avatarHtml}</div>
+            <div class="message-content">
+                <div class="message-bubble">
+                    ${content}
+                    ${fileAttachmentHtml}
+                </div>
+                <div class="message-info">
+                    <span class="message-sender">${sender}</span>
+                    <span class="message-time">${formatTime(time)}</span>
+                </div>
+            </div>
+        `;
+        
+        container.appendChild(messageDiv);
+    }
+    
+    function sendMessage() {
+        const input = document.getElementById('messageInput');
+        const content = input.value.trim();
+        if (!content) return;
+        
+        const formData = new FormData();
+        formData.append('content', content);
+        
+        const url = currentChatType === 'group' 
+            ? `/group_chat/send/${currentChatId}`
+            : `/private_chat/send/${currentChatId}`;
+        
+        fetch(url, {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                input.value = '';
+                if (currentChatType === 'group') {
+                    loadGroupMessages(currentChatId);
+                } else {
+                    loadPrivateMessages(currentChatId);
+                }
+            }
+        })
+        .catch(err => console.error('Error sending message:', err));
+    }
+    
+    function deleteChat(type, id, event) {
+        event.preventDefault();
+        event.stopPropagation();
+        showDeleteModal(type, id);
+    }
+    
+    function startPolling() {
+        if (pollingInterval) clearInterval(pollingInterval);
+        
+        pollingInterval = setInterval(() => {
+            if (currentChatType === 'group') {
+                loadGroupMessages(currentChatId);
+            } else if (currentChatType === 'private') {
+                loadPrivateMessages(currentChatId);
+            }
+        }, 2000);
+    }
+    
+    function formatTime(timeStr) {
+        const date = new Date(timeStr);
+        const now = new Date();
+        const diff = now - date;
+        
+        if (diff < 60000) return 'Vừa xong';
+        if (diff < 3600000) return `${Math.floor(diff / 60000)} phút trước`;
+        if (date.toDateString() === now.toDateString()) {
+            return date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+        }
+        return date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+    }
+    
+    function scrollToBottom() {
+        const container = document.getElementById('messagesContainer');
+        if (container) {
+            container.scrollTop = container.scrollHeight;
+        }
+    }
+    
+    // Search functionality
+    let searchTimeout;
+    document.getElementById('userSearch').addEventListener('input', function(e) {
+        const searchTerm = e.target.value.toLowerCase().trim();
+        const resultsDiv = document.getElementById('searchResults');
+        
+        clearTimeout(searchTimeout);
+        
+        if (searchTerm.length === 0) {
+            resultsDiv.classList.remove('show');
+            document.querySelectorAll('.conversation-item').forEach(item => {
+                item.style.display = 'flex';
+            });
+            return;
+        }
+        
+        let hasVisibleConversation = false;
+        document.querySelectorAll('.conversation-item').forEach(item => {
+            const name = item.querySelector('.conversation-name').textContent.toLowerCase();
+            if (name.includes(searchTerm)) {
+                item.style.display = 'flex';
+                hasVisibleConversation = true;
+            } else {
+                item.style.display = 'none';
+            }
+        });
+        
+        searchTimeout = setTimeout(() => {
+            fetch(`/search_users?q=${encodeURIComponent(searchTerm)}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.users && data.users.length > 0) {
+                        resultsDiv.innerHTML = '';
+                        data.users.forEach(user => {
+                            const item = document.createElement('div');
+                            item.className = 'search-result-item';
+                            
+                            const avatarHtml = user.avatar_url 
+                                ? `<img src="${user.avatar_url}" alt="${user.username}">`
+                                : user.username[0].toUpperCase();
+                            
+                            item.innerHTML = `
+                                <div class="search-result-avatar">${avatarHtml}</div>
+                                <div class="search-result-info">
+                                    <div class="search-result-name">${user.username}</div>
+                                </div>
+                            `;
+                            item.addEventListener('click', () => {
+                                resultsDiv.classList.remove('show');
+                                document.getElementById('userSearch').value = '';
+                                startNewChat(user.userid, user.username, user.avatar_url, user.is_online);
+                            });
+                            resultsDiv.appendChild(item);
+                        });
+                        resultsDiv.classList.add('show');
+                    } else if (!hasVisibleConversation) {
+                        resultsDiv.innerHTML = '<div style="padding: 20px; text-align: center; color: #6c757d;">Không tìm thấy</div>';
+                        resultsDiv.classList.add('show');
+                    } else {
+                        resultsDiv.classList.remove('show');
+                    }
+                })
+                .catch(err => console.error('Error searching:', err));
+        }, 300);
+    });
+    
+    function startNewChat(userid, username, avatar_url, is_online) {
+        const existingItem = document.querySelector(`.conversation-item[data-type="private"][data-id="${userid}"]`);
+        if (!existingItem) {
+            const conversationsList = document.getElementById('conversationsList');
+            const newItem = document.createElement('div');
+            newItem.className = 'conversation-item';
+            newItem.dataset.type = 'private';
+            newItem.dataset.id = userid;
+            newItem.dataset.name = username;
+            newItem.dataset.avatar = avatar_url || '';
+            newItem.dataset.online = is_online ? 'true' : 'false';
+            
+            const avatarHtml = avatar_url 
+                ? `<img src="${avatar_url}" alt="${username}">`
+                : username[0].toUpperCase();
+            
+            const statusHtml = is_online 
+                ? '<span class="status-indicator"></span>'
+                : '<span class="status-indicator offline"></span>';
+            
+            newItem.innerHTML = `
+                <a href="/view_profile/${username}" onclick="event.stopPropagation();" style="text-decoration: none;">
+                    <div class="conversation-avatar">
+                        ${avatarHtml}
+                        ${statusHtml}
+                    </div>
+                </a>
+                <div class="conversation-info">
+                    <div class="conversation-name">${username}</div>
+                    <div class="conversation-preview">Chat riêng</div>
+                </div>
+                <div class="conversation-menu">
+                    <button class="menu-btn" onclick="showDeleteMenu(event, 'private', ${userid})">
+                        <i class="fas fa-ellipsis-v"></i>
+                    </button>
+                </div>
+            `;
+            newItem.addEventListener('click', function(e) {
+                if (e.target.closest('a')) return;
+                document.querySelectorAll('.conversation-item').forEach(i => i.classList.remove('active'));
+                this.classList.add('active');
+                loadedMessageIds.clear();
+                lastMessageId = 0;
+                currentChatAvatar = avatar_url;
+                currentChatOnline = is_online;
+                loadPrivateChat(userid, username);
+            });
+            conversationsList.insertBefore(newItem, conversationsList.firstChild);
+        }
+        
+        currentChatAvatar = avatar_url;
+        currentChatOnline = is_online;
+        loadPrivateChat(userid, username);
+        document.querySelectorAll('.conversation-item').forEach(i => i.classList.remove('active'));
+        const targetItem = document.querySelector(`.conversation-item[data-type="private"][data-id="${userid}"]`);
+        if (targetItem) targetItem.classList.add('active');
+    }
+    
+    function showDeleteMenu(event, type, id) {
+        event.stopPropagation();
+        
+        document.querySelectorAll('.delete-menu').forEach(m => m.remove());
+        
+        const menu = document.createElement('div');
+        menu.className = 'delete-menu show';
+        menu.innerHTML = `
+            <div class="delete-menu-item" onclick="deleteChat('${type}', ${id}, event)">
+                <i class="fas fa-trash"></i>
+                <span>Xóa tin nhắn</span>
+            </div>
+        `;
+        
+        const menuBtn = event.target.closest('.conversation-menu');
+        menuBtn.style.position = 'relative';
+        menuBtn.appendChild(menu);
+        
+        setTimeout(() => {
+            document.addEventListener('click', closeAllMenus);
+        }, 100);
+    }
+    
+    function closeAllMenus() {
+        document.querySelectorAll('.delete-menu').forEach(m => m.remove());
+        document.removeEventListener('click', closeAllMenus);
+    }
+    
+    document.addEventListener('click', function(e) {
+        const searchWrapper = document.querySelector('.search-wrapper');
+        if (searchWrapper && !searchWrapper.contains(e.target)) {
+            document.getElementById('searchResults').classList.remove('show');
+        }
+    });
+    
+    // Close modals on overlay click
+    document.getElementById('deleteModal').addEventListener('click', function(e) {
+        if (e.target === this) {
+            closeDeleteModal();
+        }
+    });
+    
+    document.getElementById('fileShareModal').addEventListener('click', function(e) {
+        if (e.target === this) {
+            closeFileShareModal();
+        }
+    });
+    
+    document.getElementById('uploadConfirmModal').addEventListener('click', function(e) {
+        if (e.target === this) {
+            closeUploadConfirmModal();
+        }
+    });
+</script>
 {% endblock %}

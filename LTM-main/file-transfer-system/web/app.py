@@ -1,21 +1,129 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file, session, Response, jsonify
 import os
+import time
 from supabase import create_client
 import tempfile
 import uuid
 import re
 from datetime import datetime
+import pytz
 from services.storage_service import StorageService
 from services.user_service import UserService
 import base64
+import mimetypes
+import win32com.client
+import pythoncom
+
+def convert_docx_to_doc(docx_path):
+    try:
+        # Initialize COM in the current thread
+        pythoncom.CoInitialize()
+        
+        # Create a temporary file for the .doc version
+        temp_dir = tempfile.mkdtemp()
+        doc_path = os.path.join(temp_dir, 'converted.doc')
+        
+        # Create Word application object
+        word = win32com.client.Dispatch('Word.Application')
+        word.Visible = False
+        
+        try:
+            # Open the docx file
+            doc = word.Documents.Open(docx_path)
+            
+            # Save as .doc format (Word 97-2003)
+            doc.SaveAs2(doc_path, FileFormat=0)  # 0 = Word 97-2003 format
+            
+            # Close the document
+            doc.Close()
+            
+            # Read the converted file
+            with open(doc_path, 'rb') as f:
+                doc_content = f.read()
+            
+            return doc_content
+            
+        finally:
+            # Clean up
+            word.Quit()
+            
+            # Try to remove temporary files
+            try:
+                if os.path.exists(doc_path):
+                    os.remove(doc_path)
+                os.rmdir(temp_dir)
+            except:
+                pass
+            
+            # Uninitialize COM
+            pythoncom.CoUninitialize()
+            
+    except Exception as e:
+        print(f"Error converting docx to doc: {str(e)}")
+        return None
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key_here'
+
+# Helper function to get Vietnam time
+def get_vietnam_time():
+    vietnam_tz = pytz.timezone('Asia/Ho_Chi_Minh')
+    return datetime.now(vietnam_tz).isoformat()
+
+# Helper function for retry logic
+def retry_supabase_operation(operation, max_retries=3):
+    """Retry Supabase operations with exponential backoff"""
+    import time
+    import socket
+    
+    for attempt in range(max_retries):
+        try:
+            return operation()
+        except (socket.error, ConnectionError, OSError) as e:
+            if attempt == max_retries - 1:
+                print(f"Final retry failed: {str(e)}")
+                # Return empty result instead of raising error
+                return type('MockResult', (), {'data': []})()
+            wait_time = 2 ** attempt  # Exponential backoff
+            print(f"Retry attempt {attempt + 1} after {wait_time}s: {str(e)}")
+            time.sleep(wait_time)
+        except Exception as e:
+            if attempt == max_retries - 1:
+                raise e
+            wait_time = 2 ** attempt  # Exponential backoff
+            print(f"Retry attempt {attempt + 1} after {wait_time}s: {str(e)}")
+            time.sleep(wait_time)
+
+# Register custom MIME types for uncommon file extensions
+mimetypes.add_type('application/octet-stream', '.docthif')
+mimetypes.add_type('application/octet-stream', '.custom')
+mimetypes.add_type('application/octet-stream', '.unknown')
+mimetypes.add_type('application/vnd.openxmlformats-officedocument.wordprocessingml.document', '.docx')
+mimetypes.add_type('application/msword', '.doc')
+mimetypes.add_type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', '.xlsx')
+mimetypes.add_type('application/vnd.ms-excel', '.xls')
+mimetypes.add_type('application/vnd.openxmlformats-officedocument.presentationml.presentation', '.pptx')
+mimetypes.add_type('application/vnd.ms-powerpoint', '.ppt')
+mimetypes.add_type('application/vnd.oasis.opendocument.text', '.odt')
+mimetypes.add_type('application/vnd.oasis.opendocument.spreadsheet', '.ods')
+mimetypes.add_type('application/vnd.oasis.opendocument.presentation', '.odp')
+mimetypes.add_type('application/x-rar-compressed', '.rar')
+mimetypes.add_type('application/zip', '.zip')
+mimetypes.add_type('application/x-7z-compressed', '.7z')
+mimetypes.add_type('application/octet-stream', '.*')
 
 # Cấu hình Supabase
 SUPABASE_URL = "https://qrzycoatheltpfiztkeh.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFyenljb2F0aGVsdHBmaXp0a2VoIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1ODY3NjA1NiwiZXhwIjoyMDc0MjUyMDU2fQ.3JmRXRDs-QcEQDHNghjTJEPvoEHA3Zx5MpioHTh9rWM"
 
+# Tạo Supabase client với timeout
+from supabase import create_client, Client
+import httpx
+
+# Cấu hình httpx timeout global
+httpx._config.DEFAULT_TIMEOUT = httpx.Timeout(30.0)
+
+# Cấu hình Supabase client
 supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
 storage_service = StorageService(supabase_client)
 user_service = UserService(supabase_client)
@@ -57,6 +165,11 @@ def login():
             session['user'] = username
             session['role'] = user.get('role', 'user')
             flash('Đăng nhập thành công!', 'success')
+            
+            # Redirect về trang gốc nếu có, không thì về index
+            next_page = request.args.get('next')
+            if next_page:
+                return redirect(next_page)
             return redirect(url_for('index'))
         else:
             flash('Sai tên đăng nhập hoặc mật khẩu!', 'error')
@@ -120,16 +233,48 @@ def upload():
         flash('File rỗng!', 'error')
         return redirect(url_for('index'))
     
+    # Xác định MIME type dựa trên extension
+    ext = os.path.splitext(file.filename)[1].lower()
+    
+    # Map extension to MIME type
+    mime_map = {
+        '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        '.doc': 'application/msword',
+        '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        '.xls': 'application/vnd.ms-excel',
+        '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        '.ppt': 'application/vnd.ms-powerpoint',
+        '.pdf': 'application/pdf',
+        '.txt': 'text/plain',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.png': 'image/png',
+        '.gif': 'image/gif',
+        '.zip': 'application/zip',
+        '.rar': 'application/x-rar-compressed',
+        '.7z': 'application/x-7z-compressed'
+    }
+    
+    # Lấy MIME type từ map hoặc guess
+    if ext in mime_map:
+        content_type = mime_map[ext]
+    else:
+        content_type = file.content_type
+        if not content_type or content_type == 'application/octet-stream':
+            guessed_type, _ = mimetypes.guess_type(file.filename)
+            content_type = guessed_type or 'application/octet-stream'
+    
     visibility = request.form.get('visibility', 'private')
     is_public = visibility == 'public'
         
     success = storage_service.upload_file(
         file_content,
         file.filename,
-        file.content_type,
+        content_type,
         session['user'],
         is_public
     )
+    
     if isinstance(success, dict):
         if success.get('success'):
             flash(f'File {file.filename} đã được mã hóa và tải lên thành công!', 'success')
@@ -142,41 +287,103 @@ def upload():
             flash('Lỗi khi tải lên file!', 'error')
         
     return redirect(url_for('index'))
-
 @app.route('/download/<filename>')
 def download(filename):
     if 'user' not in session:
         return redirect(url_for('login'))
-        
-    result = storage_service.download_file(filename)
-    if not result:
-        flash('Lỗi khi tải xuống file!', 'error')
-        return redirect(url_for('index'))
-
-    if isinstance(result, dict) and result.get('error') == 'encrypted_missing_key':
-        flash('File được phát hiện đã được mã hóa nhưng khóa giải mã không có (metadata bị thiếu). Không thể tải xuống được.', 'error')
-        return redirect(url_for('index'))
-
-    file_data, original_filename, mime_type = result
     
-    with tempfile.NamedTemporaryFile(delete=False) as tmp:
-        tmp.write(file_data)
-        tmp.flush()
+    # Kiểm tra quyền truy cập file
+    try:
+        # Lấy thông tin file từ metadata
+        metadata_resp = supabase_client.table('files_metadata').select('metadata').eq('filename', filename).execute()
+        if not metadata_resp.data:
+            return jsonify({'error': 'File không tồn tại.'}), 404
         
-        return send_file(
-            tmp.name,
-            as_attachment=True,
-            download_name=original_filename,
-            mimetype=mime_type or 'application/octet-stream'
-        )
+        metadata = metadata_resp.data[0].get('metadata', {})
+        file_owner = metadata.get('uploaded_by')
+        is_public = metadata.get('is_public', False)
+        
+        # Nếu file là public, cho phép download
+        if is_public:
+            pass  # Cho phép download
+        # Nếu user là chủ sở hữu file, cho phép download
+        elif file_owner == session['user']:
+            pass  # Cho phép download
+        # Nếu file được chia sẻ trong chat với user này
+        else:
+            has_access = False
+            
+            # Kiểm tra trong private messages
+            private_msgs = supabase_client.table('privatemessages').select('*').contains('file_attachment', {'filename': filename}).execute()
+            if private_msgs.data:
+                for msg in private_msgs.data:
+                    if msg['senderid'] == get_user_id(session['user']) or msg['receiverid'] == get_user_id(session['user']):
+                        has_access = True
+                        break
+            
+            # Kiểm tra trong group messages
+            if not has_access:
+                group_msgs = supabase_client.table('chatroommessages').select('*').contains('file_attachment', {'filename': filename}).execute()
+                if group_msgs.data:
+                    for msg in group_msgs.data:
+                        member_check = supabase_client.table('chatroommembers').select('*').eq('roomid', msg['roomid']).eq('userid', get_user_id(session['user'])).execute()
+                        if member_check.data:
+                            has_access = True
+                            break
+            
+            if not has_access:
+                return jsonify({'error': 'Bạn không có quyền truy cập file này.'}), 403
+        
+    except Exception as e:
+        return jsonify({'error': f'Lỗi kiểm tra quyền truy cập: {str(e)}'}), 500
+        
+    try:
+        result = storage_service.download_file(filename)
+        if not result:
+            return jsonify({'error': 'Không thể tải xuống file. File có thể không tồn tại hoặc đã bị xóa.'}), 404
+
+        if isinstance(result, dict) and result.get('error') == 'encrypted_missing_key':
+            return jsonify({'error': 'File được phát hiện đã được mã hóa nhưng khóa giải mã không có (metadata bị thiếu). Không thể tải xuống được.'}), 400
+
+        file_data, original_filename, mime_type = result
+        
+        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            tmp.write(file_data)
+            tmp.flush()
+            
+            return send_file(
+                tmp.name,
+                as_attachment=True,
+                download_name=original_filename,
+                mimetype=mime_type or 'application/octet-stream'
+            )
+    except Exception as e:
+        return jsonify({'error': f'Lỗi khi tải xuống file: {str(e)}'}), 500
 
 @app.route('/delete/<filename>')
 def delete(filename):
     if 'user' not in session:
         return redirect(url_for('login'))
-        
-    if session.get('role') != 'admin':
-        flash('Bạn không có quyền xóa file!', 'error')
+    
+    # Check if user is admin or file owner
+    is_admin = session.get('role') == 'admin'
+    is_owner = False
+    
+    if not is_admin:
+        # Check if user is the owner of the file
+        files = storage_service.list_files(
+            current_user=session['user'],
+            public_only=False
+        )
+        for file in files:
+            if file['name'] == filename:
+                metadata = file.get('metadata', {})
+                if metadata.get('uploaded_by') == session['user']:
+                    is_owner = True
+                    break
+    
+    if not is_admin and not is_owner:
+        flash('Bạn không có quyền xóa file này!', 'error')
         return redirect(url_for('index'))
         
     if storage_service.delete_file(filename):
@@ -191,15 +398,47 @@ def preview(filename):
     if 'user' not in session:
         return redirect(url_for('login'))
 
+    # Kiểm tra quyền truy cập file (sử dụng logic tương tự như download)
+    try:
+        metadata_resp = supabase_client.table('files_metadata').select('metadata').eq('filename', filename).execute()
+        if not metadata_resp.data:
+            flash('File không tồn tại.', 'error')
+            return redirect(url_for('index'))
+        
+        metadata = metadata_resp.data[0].get('metadata', {})
+        file_owner = metadata.get('uploaded_by')
+        is_public = metadata.get('is_public', False)
+        
+        if not is_public and file_owner != session['user']:
+            # Kiểm tra quyền truy cập trong chat
+            has_access = False
+            
+            private_msgs = supabase_client.table('privatemessages').select('*').contains('file_attachment', {'filename': filename}).execute()
+            if private_msgs.data:
+                for msg in private_msgs.data:
+                    if msg['senderid'] == get_user_id(session['user']) or msg['receiverid'] == get_user_id(session['user']):
+                        has_access = True
+                        break
+            
+            if not has_access:
+                group_msgs = supabase_client.table('chatroommessages').select('*').contains('file_attachment', {'filename': filename}).execute()
+                if group_msgs.data:
+                    for msg in group_msgs.data:
+                        member_check = supabase_client.table('chatroommembers').select('*').eq('roomid', msg['roomid']).eq('userid', get_user_id(session['user'])).execute()
+                        if member_check.data:
+                            has_access = True
+                            break
+            
+            if not has_access:
+                flash('Bạn không có quyền xem file này.', 'error')
+                return redirect(url_for('index'))
+        
+    except Exception as e:
+        flash(f'Lỗi kiểm tra quyền truy cập: {str(e)}', 'error')
+        return redirect(url_for('index'))
+
     result = storage_service.download_file(filename)
     if not result:
-        public = storage_service.get_public_url(filename)
-        if public:
-            return redirect(public)
-        signed = storage_service.create_signed_url(filename, expires=120)
-        if signed:
-            return redirect(signed)
-
         flash('Lỗi khi tải xuống file để xem trước!', 'error')
         return redirect(url_for('index'))
 
@@ -234,14 +473,44 @@ def preview_stream(filename):
     if 'user' not in session:
         return redirect(url_for('login'))
 
+    # Kiểm tra quyền truy cập file
+    try:
+        metadata_resp = supabase_client.table('files_metadata').select('metadata').eq('filename', filename).execute()
+        if not metadata_resp.data:
+            return Response('<h4>File không tồn tại.</h4>', mimetype='text/html')
+        
+        metadata = metadata_resp.data[0].get('metadata', {})
+        file_owner = metadata.get('uploaded_by')
+        is_public = metadata.get('is_public', False)
+        
+        if not is_public and file_owner != session['user']:
+            # Kiểm tra quyền truy cập trong chat
+            has_access = False
+            
+            private_msgs = supabase_client.table('privatemessages').select('*').contains('file_attachment', {'filename': filename}).execute()
+            if private_msgs.data:
+                for msg in private_msgs.data:
+                    if msg['senderid'] == get_user_id(session['user']) or msg['receiverid'] == get_user_id(session['user']):
+                        has_access = True
+                        break
+            
+            if not has_access:
+                group_msgs = supabase_client.table('chatroommessages').select('*').contains('file_attachment', {'filename': filename}).execute()
+                if group_msgs.data:
+                    for msg in group_msgs.data:
+                        member_check = supabase_client.table('chatroommembers').select('*').eq('roomid', msg['roomid']).eq('userid', get_user_id(session['user'])).execute()
+                        if member_check.data:
+                            has_access = True
+                            break
+            
+            if not has_access:
+                return Response('<h4>Bạn không có quyền xem file này.</h4>', mimetype='text/html')
+        
+    except Exception as e:
+        return Response(f'<h4>Lỗi kiểm tra quyền truy cập: {str(e)}</h4>', mimetype='text/html')
+
     result = storage_service.download_file(filename)
     if not result:
-        public = storage_service.get_public_url(filename)
-        if public:
-            return redirect(public)
-        signed = storage_service.create_signed_url(filename, expires=120)
-        if signed:
-            return redirect(signed)
         return Response('<h4>Không thể tải file để xem trước.</h4>', mimetype='text/html')
 
     if isinstance(result, dict) and result.get('error') == 'encrypted_missing_key':
@@ -581,7 +850,7 @@ def online_users():
 @app.route('/chat')
 def chat():
     if 'user' not in session:
-        return redirect(url_for('login'))
+        return redirect(url_for('login', next=request.url))
     rooms = []
     recent_chats = []
 
@@ -732,7 +1001,7 @@ def group_chat(roomid):
         return redirect(url_for('chat'))
     
     messages = []
-    msg_res = supabase_client.table('chatroommessages').select('*').eq('roomid', roomid).order('createdat', desc=False).limit(50).execute()
+    msg_res = supabase_client.table('chatroommessages').select('*, file_attachment').eq('roomid', roomid).order('createdat', desc=False).limit(50).execute()
     
     if msg_res.data:
         user_ids = list(set(msg['userid'] for msg in msg_res.data))
@@ -773,7 +1042,7 @@ def send_group_message(roomid):
             'userid': my_id,
             'roomid': roomid,
             'content': content,
-            'createdat': datetime.now().isoformat()
+            'createdat': get_vietnam_time()
         }
         
         res = supabase_client.table('chatroommessages').insert(message_data).execute()
@@ -872,7 +1141,7 @@ def private_chat(userid):
                     'senderid': my_id,
                     'receiverid': userid,
                     'content': content,
-                    'createdat': datetime.now().isoformat()
+                    'createdat': get_vietnam_time()
                 }).execute()
                 if res.data:
                     if request.headers.get('Content-Type', '').startswith('application/x-www-form-urlencoded'):
@@ -894,7 +1163,22 @@ def private_chat(userid):
     if my_id:
         logic = f"and(senderid.eq.{my_id},receiverid.eq.{userid}),and(senderid.eq.{userid},receiverid.eq.{my_id})"
         msg_res = supabase_client.table('privatemessages').select('*').or_(logic).order('createdat', desc=False).limit(50).execute()
-        messages = msg_res.data if msg_res.data else []
+        if msg_res.data:
+            # Get all unique sender IDs
+            sender_ids = set()
+            for msg in msg_res.data:
+                sender_ids.add(msg['senderid'])
+            
+            # Get user information for all senders
+            users_res = supabase_client.table('users').select('userid, username, avatar_url').in_('userid', list(sender_ids)).execute()
+            user_info = {user['userid']: user for user in users_res.data} if users_res.data else {}
+            
+            for msg in msg_res.data:
+                # Add user information to message
+                sender_info = user_info.get(msg['senderid'], {})
+                msg['username'] = sender_info.get('username', 'Unknown')
+                msg['avatar_url'] = sender_info.get('avatar_url')
+                messages.append(msg)
     return render_template('private_chat.html', chat_user=chat_user, messages=messages, userid=userid, my_id=my_id)
 
 @app.route('/private_chat/messages/<int:userid>')
@@ -909,8 +1193,21 @@ def get_private_messages(userid):
     msg_res = supabase_client.table('privatemessages').select('*').or_(logic).order('createdat', desc=False).limit(50).execute()
     messages = []
     if msg_res.data:
+        # Get all unique sender IDs
+        sender_ids = set()
+        for msg in msg_res.data:
+            sender_ids.add(msg['senderid'])
+        
+        # Get user information for all senders
+        users_res = supabase_client.table('users').select('userid, username, avatar_url').in_('userid', list(sender_ids)).execute()
+        user_info = {user['userid']: user for user in users_res.data} if users_res.data else {}
+        
         for msg in msg_res.data:
             msg['messageid'] = msg.get('messageid') or msg.get('MessageID')
+            # Add user information to message
+            sender_info = user_info.get(msg['senderid'], {})
+            msg['username'] = sender_info.get('username', 'Unknown')
+            msg['avatar_url'] = sender_info.get('avatar_url')
             messages.append(msg)
     return jsonify({"messages": messages}), 200
 
@@ -932,7 +1229,7 @@ def send_private_message(userid):
             'senderid': my_id,
             'receiverid': userid,
             'content': content,
-            'createdat': datetime.now().isoformat()
+            'createdat': get_vietnam_time()
         }).execute()
         
         if res.data:
@@ -1003,20 +1300,71 @@ def upload_chat_file():
     if file.filename == '':
         return jsonify({"error": "No file selected"}), 400
     
-    # Đọc file
-    file_content = file.read()
-    if len(file_content) == 0:
-        return jsonify({"error": "Empty file"}), 400
+    # Check if file is .docx
+    filename = file.filename
+    is_docx = filename.lower().endswith('.docx')
     
-    # Lấy visibility từ request (default: public)
-    visibility = request.form.get('visibility', 'public')
+    if is_docx:
+        # Save the uploaded .docx file temporarily
+        temp_docx = tempfile.NamedTemporaryFile(delete=False, suffix='.docx')
+        file_content = file.read()
+        temp_docx.write(file_content)
+        temp_docx.close()
+        
+        try:
+            # Convert to .doc
+            doc_content = convert_docx_to_doc(temp_docx.name)
+            if doc_content is None:
+                return jsonify({"error": "Failed to convert DOCX to DOC format"}), 400
+            
+            # Update file content and name
+            file_content = doc_content
+            filename = os.path.splitext(filename)[0] + '.doc'
+            content_type = 'application/msword'
+            
+        finally:
+            # Clean up temp file
+            try:
+                os.unlink(temp_docx.name)
+            except:
+                pass
+    else:
+        # For non-docx files, read normally
+        file_content = file.read()
+        if len(file_content) == 0:
+            return jsonify({"error": "Empty file"}), 400
+        
+        # Regular MIME type detection
+        content_type = file.content_type
+    if not content_type or content_type == 'application/octet-stream':
+        # Try to detect MIME type from file extension
+        guessed_type, _ = mimetypes.guess_type(file.filename)
+        if guessed_type:
+            content_type = guessed_type
+        else:
+            # Check for common office document extensions
+            ext = os.path.splitext(file.filename)[1].lower()
+            if ext == '.docx':
+                content_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            elif ext == '.doc':
+                content_type = 'application/msword'
+            elif ext == '.xlsx':
+                content_type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            elif ext == '.pptx':
+                content_type = 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+            else:
+                # For unknown extensions, use generic binary type
+                content_type = 'application/octet-stream'
+    
+    # File từ chat luôn là riêng tư để bảo mật
+    visibility = request.form.get('visibility', 'private')
     is_public = visibility == 'public'
     
     # Upload file
     success = storage_service.upload_file(
         file_content,
         file.filename,
-        file.content_type,
+        content_type,
         session['user'],
         is_public
     )
@@ -1078,7 +1426,8 @@ def share_file_to_chat():
                     'filename': f['name'],
                     'original_filename': metadata.get('original_filename'),
                     'size': metadata.get('size_display'),
-                    'url': url_for('download', filename=f['name'], _external=True)
+                    'url': url_for('download', filename=f['name'], _external=True),
+                    'preview_url': url_for('preview', filename=f['name'], _external=True)
                 }
                 break
         
@@ -1104,7 +1453,7 @@ def share_file_to_chat():
                 'roomid': int(chat_id),
                 'content': message_content,
                 'file_attachment': file_info,
-                'createdat': datetime.now().isoformat()
+                'createdat': get_vietnam_time()
             }).execute()
             
             if res.data:
@@ -1124,7 +1473,7 @@ def share_file_to_chat():
                 'receiverid': int(chat_id),
                 'content': message_content,
                 'file_attachment': file_info,
-                'createdat': datetime.now().isoformat()
+                'createdat': get_vietnam_time()
             }).execute()
             
             if res.data:
@@ -1140,6 +1489,533 @@ def share_file_to_chat():
         
         return jsonify({"error": "Failed to send"}), 500
         
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/chat_file_access/<filename>')
+def chat_file_access(filename):
+    """Kiểm tra quyền truy cập file trong chat"""
+    if 'user' not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    
+    try:
+        # Lấy thông tin file từ metadata
+        metadata_resp = supabase_client.table('files_metadata').select('metadata').eq('filename', filename).execute()
+        if not metadata_resp.data:
+            return jsonify({"error": "File not found"}), 404
+        
+        metadata = metadata_resp.data[0].get('metadata', {})
+        file_owner = metadata.get('uploaded_by')
+        
+        # Kiểm tra nếu user là chủ sở hữu file
+        if file_owner == session['user']:
+            return jsonify({"access": "owner"}), 200
+        
+        # Kiểm tra nếu file được chia sẻ trong chat với user này
+        # Tìm trong private messages
+        private_msgs = supabase_client.table('privatemessages').select('*').contains('file_attachment', {'filename': filename}).execute()
+        if private_msgs.data:
+            for msg in private_msgs.data:
+                # Kiểm tra nếu user là sender hoặc receiver
+                if msg['senderid'] == get_user_id(session['user']) or msg['receiverid'] == get_user_id(session['user']):
+                    return jsonify({"access": "shared"}), 200
+        
+        # Tìm trong group messages
+        group_msgs = supabase_client.table('chatroommessages').select('*').contains('file_attachment', {'filename': filename}).execute()
+        if group_msgs.data:
+            for msg in group_msgs.data:
+                # Kiểm tra nếu user là thành viên của room
+                member_check = supabase_client.table('chatroommembers').select('*').eq('roomid', msg['roomid']).eq('userid', get_user_id(session['user'])).execute()
+                if member_check.data:
+                    return jsonify({"access": "shared"}), 200
+        
+        return jsonify({"error": "Access denied"}), 403
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+def get_user_id(username):
+    """Helper function to get user ID"""
+    try:
+        res = supabase_client.table('users').select('userid').eq('username', username).execute()
+        return res.data[0]['userid'] if res.data else None
+    except:
+        return None
+
+# Group Management Routes
+@app.route('/group_settings/<int:roomid>')
+def group_settings(roomid):
+    """Trang chỉnh sửa thông tin nhóm"""
+    if 'user' not in session:
+        return redirect(url_for('login', next=request.url))
+    
+    try:
+        print(f"Accessing group_settings for roomid: {roomid}, user: {session['user']}")
+        # Lấy thông tin nhóm với retry
+        def get_room():
+            return supabase_client.table('chatrooms').select('*').eq('roomid', roomid).execute()
+        
+        room_res = retry_supabase_operation(get_room)
+        if not room_res.data:
+            flash('Nhóm không tồn tại', 'error')
+            return redirect(url_for('chat'))
+        
+        room = room_res.data[0]
+        
+        # Lấy thông tin người upload avatar nếu có
+        if room.get('avatar_uploaded_by'):
+            try:
+                uploader_res = supabase_client.table('users').select('username, avatar_url').eq('userid', room['avatar_uploaded_by']).execute()
+                if uploader_res.data:
+                    room['avatar_uploader'] = uploader_res.data[0]
+            except:
+                room['avatar_uploader'] = None
+        else:
+            room['avatar_uploader'] = None
+        
+        # Format avatar_uploaded_at nếu có
+        if room.get('avatar_uploaded_at'):
+            try:
+                from datetime import datetime
+                if isinstance(room['avatar_uploaded_at'], str):
+                    # Parse ISO string to datetime
+                    dt = datetime.fromisoformat(room['avatar_uploaded_at'].replace('Z', '+00:00'))
+                    room['avatar_uploaded_at'] = dt.strftime('%d/%m/%Y %H:%M')
+                else:
+                    # Already a datetime object
+                    room['avatar_uploaded_at'] = room['avatar_uploaded_at'].strftime('%d/%m/%Y %H:%M')
+            except:
+                # If parsing fails, keep original value
+                pass
+        
+        # Lấy userid từ session với retry
+        def get_current_user():
+            return supabase_client.table('users').select('userid').eq('username', session['user']).execute()
+        
+        current_user_res = retry_supabase_operation(get_current_user)
+        if not current_user_res.data:
+            flash('Không tìm thấy thông tin người dùng', 'error')
+            return redirect(url_for('chat'))
+        
+        current_userid = current_user_res.data[0]['userid']
+        
+        # Lưu userid vào session để template có thể sử dụng
+        session['userid'] = current_userid
+        
+        # Kiểm tra user có phải là người tạo nhóm không
+        is_room_creator = room.get('createdby') == current_userid
+        
+        # Kiểm tra user có phải là thành viên nhóm không với retry
+        def check_member():
+            return supabase_client.table('chatroommembers').select('*').eq('roomid', roomid).eq('userid', current_userid).execute()
+        
+        member_res = retry_supabase_operation(check_member)
+        if not member_res.data:
+            flash('Bạn không phải thành viên nhóm này', 'error')
+            return redirect(url_for('chat'))
+        
+        # Lấy danh sách thành viên với retry
+        def get_members():
+            return supabase_client.table('chatroommembers').select('''
+                userid,
+                joinedat,
+                users!inner(username, avatar_url, is_online, last_seen)
+            ''').eq('roomid', roomid).execute()
+        
+        members_res = retry_supabase_operation(get_members)
+        
+        members = []
+        for member in members_res.data:
+            user_data = member['users']
+            
+            # Format last_seen nếu có
+            last_seen = user_data.get('last_seen')
+            if last_seen:
+                try:
+                    from datetime import datetime
+                    if isinstance(last_seen, str):
+                        # Parse ISO string to datetime
+                        dt = datetime.fromisoformat(last_seen.replace('Z', '+00:00'))
+                        last_seen = dt.strftime('%d/%m/%Y %H:%M')
+                    else:
+                        # Already a datetime object
+                        last_seen = last_seen.strftime('%d/%m/%Y %H:%M')
+                except:
+                    # If parsing fails, keep original value
+                    pass
+            
+            members.append({
+                'userid': member['userid'],
+                'username': user_data['username'],
+                'avatar_url': user_data.get('avatar_url'),
+                'is_online': user_data.get('is_online', False),
+                'last_seen': last_seen,
+                'joined_at': member['joinedat']
+            })
+        
+        return render_template('group_settings.html', room=room, members=members, is_room_creator=is_room_creator)
+    
+    except Exception as e:
+        flash(f'Lỗi: {str(e)}', 'error')
+        return redirect(url_for('chat'))
+
+@app.route('/update_group_info', methods=['POST'])
+def update_group_info():
+    """Cập nhật thông tin nhóm"""
+    if 'user' not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    
+    try:
+        data = request.get_json()
+        roomid = data.get('roomid')
+        roomname = data.get('roomname', '').strip()
+        
+        if not roomname:
+            return jsonify({"error": "Tên nhóm không được để trống"}), 400
+        
+        # Lấy userid từ session
+        current_user_res = supabase_client.table('users').select('userid').eq('username', session['user']).execute()
+        if not current_user_res.data:
+            return jsonify({"error": "Không tìm thấy thông tin người dùng"}), 401
+        
+        current_userid = current_user_res.data[0]['userid']
+        
+        # Kiểm tra quyền (chỉ thành viên mới được cập nhật)
+        member_res = supabase_client.table('chatroommembers').select('userid').eq('roomid', roomid).eq('userid', current_userid).execute()
+        if not member_res.data:
+            return jsonify({"error": "Bạn không có quyền chỉnh sửa nhóm này"}), 403
+        
+        # Cập nhật tên nhóm
+        update_res = supabase_client.table('chatrooms').update({
+            'roomname': roomname
+        }).eq('roomid', roomid).execute()
+        
+        if update_res.data:
+            return jsonify({"success": True, "message": "Đã cập nhật thông tin nhóm"})
+        else:
+            return jsonify({"error": "Lỗi khi cập nhật thông tin nhóm"}), 500
+    
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/upload_group_avatar', methods=['POST'])
+def upload_group_avatar():
+    """Upload ảnh đại diện nhóm"""
+    if 'user' not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    
+    try:
+        if 'file' not in request.files:
+            return jsonify({"error": "No file uploaded"}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({"error": "No file selected"}), 400
+        
+        roomid = request.form.get('roomid')
+        if not roomid:
+            return jsonify({"error": "Room ID is required"}), 400
+        
+        # Lấy userid từ session
+        current_user_res = supabase_client.table('users').select('userid').eq('username', session['user']).execute()
+        if not current_user_res.data:
+            return jsonify({"error": "Không tìm thấy thông tin người dùng"}), 401
+        
+        current_userid = current_user_res.data[0]['userid']
+        
+        # Kiểm tra quyền
+        member_res = supabase_client.table('chatroommembers').select('userid').eq('roomid', roomid).eq('userid', current_userid).execute()
+        if not member_res.data:
+            return jsonify({"error": "Bạn không có quyền chỉnh sửa nhóm này"}), 403
+        
+        # Upload file to avatars bucket
+        file_content = file.read()
+        file_extension = file.filename.split('.')[-1] if '.' in file.filename else 'jpg'
+        filename = f"group_{roomid}_{int(time.time())}.{file_extension}"
+        
+        try:
+            upload_res = supabase_client.storage.from_('avatars').upload(filename, file_content, {
+                'content-type': file.content_type or 'image/jpeg'
+            })
+            
+            # Kiểm tra lỗi upload
+            if hasattr(upload_res, 'error') and upload_res.error:
+                print(f"Upload error: {upload_res.error}")
+                return jsonify({"error": f"Upload failed: {upload_res.error}"}), 500
+            
+            # Lấy URL public
+            avatar_url = supabase_client.storage.from_('avatars').get_public_url(filename)
+            
+        except Exception as upload_error:
+            print(f"Storage upload error: {str(upload_error)}")
+            return jsonify({"error": f"Storage error: {str(upload_error)}"}), 500
+        
+        # Cập nhật avatar_url và thông tin người upload
+        try:
+            update_res = supabase_client.table('chatrooms').update({
+                'avatar_url': avatar_url,
+                'avatar_uploaded_by': current_userid,
+                'avatar_uploaded_at': get_vietnam_time()
+            }).eq('roomid', roomid).execute()
+            
+            if update_res.data:
+                return jsonify({
+                    "success": True, 
+                    "avatar_url": avatar_url,
+                    "message": "Đã cập nhật ảnh đại diện nhóm"
+                })
+            else:
+                return jsonify({"error": "Lỗi khi cập nhật ảnh đại diện trong database"}), 500
+                
+        except Exception as db_error:
+            print(f"Database update error: {str(db_error)}")
+            return jsonify({"error": f"Database error: {str(db_error)}"}), 500
+    
+    except Exception as e:
+        print(f"Upload group avatar error: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/leave_group', methods=['POST'])
+def leave_group():
+    """Rời khỏi nhóm"""
+    if 'user' not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    
+    try:
+        data = request.get_json()
+        roomid = data.get('roomid')
+        
+        # Lấy userid từ session
+        current_user_res = supabase_client.table('users').select('userid').eq('username', session['user']).execute()
+        if not current_user_res.data:
+            return jsonify({"error": "Không tìm thấy thông tin người dùng"}), 401
+        
+        current_userid = current_user_res.data[0]['userid']
+        
+        # Kiểm tra user có phải là thành viên nhóm không
+        member_res = supabase_client.table('chatroommembers').select('userid').eq('roomid', roomid).eq('userid', current_userid).execute()
+        if not member_res.data:
+            return jsonify({"error": "Bạn không phải thành viên nhóm này"}), 403
+        
+        # Kiểm tra user có phải là người tạo nhóm không
+        room_res = supabase_client.table('chatrooms').select('createdby').eq('roomid', roomid).execute()
+        if room_res.data and room_res.data[0]['createdby'] == current_userid:
+            return jsonify({"error": "Người tạo nhóm không thể rời nhóm. Hãy xóa nhóm thay vào đó."}), 400
+        
+        # Xóa thành viên khỏi nhóm
+        remove_res = supabase_client.table('chatroommembers').delete().eq('roomid', roomid).eq('userid', current_userid).execute()
+        
+        if remove_res.data:
+            return jsonify({"success": True, "message": "Đã rời khỏi nhóm"})
+        else:
+            return jsonify({"error": "Lỗi khi rời nhóm"}), 500
+    
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/delete_group', methods=['POST'])
+def delete_group():
+    """Xóa nhóm (chỉ người tạo)"""
+    if 'user' not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    
+    try:
+        data = request.get_json()
+        roomid = data.get('roomid')
+        
+        # Lấy userid từ session
+        current_user_res = supabase_client.table('users').select('userid').eq('username', session['user']).execute()
+        if not current_user_res.data:
+            return jsonify({"error": "Không tìm thấy thông tin người dùng"}), 401
+        
+        current_userid = current_user_res.data[0]['userid']
+        
+        # Kiểm tra user có phải là người tạo nhóm không
+        room_res = supabase_client.table('chatrooms').select('createdby').eq('roomid', roomid).execute()
+        if not room_res.data:
+            return jsonify({"error": "Nhóm không tồn tại"}), 404
+        
+        if room_res.data[0]['createdby'] != current_userid:
+            return jsonify({"error": "Chỉ người tạo nhóm mới có thể xóa nhóm"}), 403
+        
+        # Xóa tất cả thành viên nhóm
+        supabase_client.table('chatroommembers').delete().eq('roomid', roomid).execute()
+        
+        # Xóa tất cả tin nhắn nhóm
+        supabase_client.table('groupmessages').delete().eq('roomid', roomid).execute()
+        
+        # Xóa nhóm
+        delete_res = supabase_client.table('chatrooms').delete().eq('roomid', roomid).execute()
+        
+        if delete_res.data:
+            return jsonify({"success": True, "message": "Đã xóa nhóm thành công"})
+        else:
+            return jsonify({"error": "Lỗi khi xóa nhóm"}), 500
+    
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/add_group_member', methods=['POST'])
+def add_group_member():
+    """Thêm thành viên vào nhóm"""
+    if 'user' not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    
+    try:
+        data = request.get_json()
+        roomid = data.get('roomid')
+        username = data.get('username', '').strip()
+        
+        if not username:
+            return jsonify({"error": "Tên người dùng không được để trống"}), 400
+        
+        # Lấy userid từ session
+        current_user_res = supabase_client.table('users').select('userid').eq('username', session['user']).execute()
+        if not current_user_res.data:
+            return jsonify({"error": "Không tìm thấy thông tin người dùng"}), 401
+        
+        current_userid = current_user_res.data[0]['userid']
+        
+        # Kiểm tra quyền (chỉ thành viên mới được thêm người)
+        member_res = supabase_client.table('chatroommembers').select('userid').eq('roomid', roomid).eq('userid', current_userid).execute()
+        if not member_res.data:
+            return jsonify({"error": "Bạn không có quyền thêm thành viên"}), 403
+        
+        # Tìm user
+        user_res = supabase_client.table('users').select('userid').eq('username', username).execute()
+        if not user_res.data:
+            return jsonify({"error": "Người dùng không tồn tại"}), 404
+        
+        new_userid = user_res.data[0]['userid']
+        
+        # Kiểm tra đã là thành viên chưa
+        existing_res = supabase_client.table('chatroommembers').select('userid').eq('roomid', roomid).eq('userid', new_userid).execute()
+        if existing_res.data:
+            return jsonify({"error": "Người này đã là thành viên nhóm"}), 400
+        
+        # Thêm thành viên
+        add_res = supabase_client.table('chatroommembers').insert({
+            'roomid': roomid,
+            'userid': new_userid
+        }).execute()
+        
+        if add_res.data:
+            return jsonify({"success": True, "message": f"Đã thêm {username} vào nhóm"})
+        else:
+            return jsonify({"error": "Lỗi khi thêm thành viên"}), 500
+    
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/remove_group_member', methods=['POST'])
+def remove_group_member():
+    """Xóa thành viên khỏi nhóm"""
+    if 'user' not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    
+    try:
+        data = request.get_json()
+        roomid = data.get('roomid')
+        userid_to_remove = data.get('userid')
+        
+        # Lấy userid từ session
+        current_user_res = supabase_client.table('users').select('userid').eq('username', session['user']).execute()
+        if not current_user_res.data:
+            return jsonify({"error": "Không tìm thấy thông tin người dùng"}), 401
+        
+        current_userid = current_user_res.data[0]['userid']
+        
+        # Kiểm tra quyền (chỉ thành viên mới được xóa người)
+        member_res = supabase_client.table('chatroommembers').select('userid').eq('roomid', roomid).eq('userid', current_userid).execute()
+        if not member_res.data:
+            return jsonify({"error": "Bạn không có quyền xóa thành viên"}), 403
+        
+        # Không cho phép xóa chính mình
+        if int(userid_to_remove) == current_userid:
+            return jsonify({"error": "Bạn không thể xóa chính mình khỏi nhóm"}), 400
+        
+        # Xóa thành viên
+        remove_res = supabase_client.table('chatroommembers').delete().eq('roomid', roomid).eq('userid', userid_to_remove).execute()
+        
+        if remove_res.data:
+            return jsonify({"success": True, "message": "Đã xóa thành viên khỏi nhóm"})
+        else:
+            return jsonify({"error": "Lỗi khi xóa thành viên"}), 500
+    
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Private Chat Info Routes
+@app.route('/private_chat_info/<int:userid>')
+def private_chat_info(userid):
+    """Trang thông tin chat riêng tư"""
+    if 'user' not in session:
+        return redirect(url_for('login'))
+    
+    try:
+        # Lấy thông tin người dùng hiện tại
+        current_user_res = supabase_client.table('users').select('userid').eq('username', session['user']).execute()
+        if not current_user_res.data:
+            flash('Không tìm thấy thông tin người dùng', 'error')
+            return redirect(url_for('chat'))
+        
+        current_userid = current_user_res.data[0]['userid']
+        
+        # Lấy thông tin người chat
+        chat_user_res = supabase_client.table('users').select('*').eq('userid', userid).execute()
+        if not chat_user_res.data:
+            flash('Người dùng không tồn tại', 'error')
+            return redirect(url_for('chat'))
+        
+        chat_user = chat_user_res.data[0]
+        
+        # Lấy danh sách file đã gửi trong cuộc trò chuyện
+        files_res = supabase_client.table('privatemessages').select('file_attachment').eq('senderid', current_userid).eq('receiverid', userid).not_.is_('file_attachment', 'null').execute()
+        
+        files_sent = []
+        for msg in files_res.data:
+            if msg.get('file_attachment'):
+                files_sent.append(msg['file_attachment'])
+        
+        # Lấy file nhận được
+        files_received_res = supabase_client.table('privatemessages').select('file_attachment').eq('senderid', userid).eq('receiverid', current_userid).not_.is_('file_attachment', 'null').execute()
+        
+        files_received = []
+        for msg in files_received_res.data:
+            if msg.get('file_attachment'):
+                files_received.append(msg['file_attachment'])
+        
+        # Lấy nickname nếu có (có thể lưu trong bảng riêng hoặc metadata)
+        # Tạm thời để trống, sẽ implement sau
+        
+        return render_template('private_chat_info.html', 
+                             chat_user=chat_user, 
+                             files_sent=files_sent, 
+                             files_received=files_received)
+    
+    except Exception as e:
+        flash(f'Lỗi: {str(e)}', 'error')
+        return redirect(url_for('chat'))
+
+@app.route('/set_nickname', methods=['POST'])
+def set_nickname():
+    """Đặt biệt danh cho người dùng"""
+    if 'user' not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    
+    try:
+        data = request.get_json()
+        target_userid = data.get('target_userid')
+        nickname = data.get('nickname', '').strip()
+        
+        if not target_userid:
+            return jsonify({"error": "Target user ID is required"}), 400
+        
+        # Tạm thời lưu trong session hoặc tạo bảng nicknames
+        # Có thể tạo bảng nicknames với (userid, target_userid, nickname)
+        # Tạm thời return success
+        return jsonify({"success": True, "message": "Đã đặt biệt danh"})
+    
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

@@ -636,6 +636,183 @@
             }
         }
         
+        /* Progress Bar */
+        .progress-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 40px;
+            background: rgba(0, 0, 0, 0.1);
+            z-index: 9999;
+            display: none;
+            border-radius: 0 0 8px 8px;
+            overflow: hidden;
+        }
+        
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #0ea5e9 0%, #10b981 100%);
+            width: 0%;
+            transition: width 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .progress-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 14px;
+            font-weight: 700;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+            z-index: 10001;
+            white-space: nowrap;
+        }
+        
+        .progress-bar::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+            animation: shimmer 1.5s infinite;
+        }
+        
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+        
+        /* Download Progress Modal */
+        .download-progress-modal .modal-content {
+            border-radius: 16px;
+            border: none;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+        
+        .download-progress-modal .modal-header {
+            background: linear-gradient(135deg, #0ea5e9 0%, #10b981 100%);
+            border: none;
+            padding: 1.5rem 2rem;
+        }
+        
+        .download-progress-modal .modal-title {
+            color: white;
+            font-weight: 600;
+            font-size: 1.2rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        
+        .download-progress-modal .modal-body {
+            padding: 2rem;
+            text-align: center;
+        }
+        
+        .download-progress {
+            width: 100%;
+            height: 8px;
+            background: #e9ecef;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 1.5rem 0;
+        }
+        
+        .download-progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #0ea5e9 0%, #10b981 100%);
+            width: 0%;
+            transition: width 0.3s ease;
+            position: relative;
+        }
+        
+        .download-progress-bar::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+            animation: shimmer 1.5s infinite;
+        }
+        
+        .download-status {
+            color: #495057;
+            font-weight: 500;
+            margin-bottom: 1rem;
+        }
+        
+        .download-error {
+            color: #dc3545;
+            background: rgba(220, 53, 69, 0.1);
+            padding: 1rem;
+            border-radius: 8px;
+            border: 1px solid rgba(220, 53, 69, 0.2);
+            margin-top: 1rem;
+        }
+        
+        .download-success {
+            color: #198754;
+            background: rgba(25, 135, 84, 0.1);
+            padding: 1rem;
+            border-radius: 8px;
+            border: 1px solid rgba(25, 135, 84, 0.2);
+            margin-top: 1rem;
+        }
+        
+        /* Custom Toast Notifications */
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 10000;
+        }
+        
+        .custom-toast {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border: none;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+            padding: 1rem 1.5rem;
+            margin-bottom: 1rem;
+            min-width: 300px;
+            animation: slideInRight 0.3s ease-out;
+        }
+        
+        .custom-toast.error {
+            border-left: 4px solid #dc3545;
+        }
+        
+        .custom-toast.success {
+            border-left: 4px solid #198754;
+        }
+        
+        .custom-toast.warning {
+            border-left: 4px solid #ffc107;
+        }
+        
+        @keyframes slideInRight {
+            from {
+                opacity: 0;
+                transform: translateX(100%);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+        
         /* Scrollbar */
         ::-webkit-scrollbar {
             width: 10px;
@@ -657,6 +834,16 @@
     </style>
 </head>
 <body>
+    <!-- Progress Bar -->
+    <div class="progress-container" id="progressContainer">
+        <div class="progress-bar" id="progressBar">
+            <div class="progress-text" id="progressText">Đang tải lên...</div>
+        </div>
+    </div>
+    
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+    
     <div class="content-wrapper">
         <nav class="navbar navbar-expand-lg">
             <div class="container">
@@ -750,10 +937,32 @@
                             <i class="fas fa-folder-open"></i>
                             Danh sách file
                         </h5>
-                        <button class="btn btn-light btn-sm" onclick="refreshFileList()">
-                            <i class="fas fa-sync-alt me-1"></i>
-                            Làm mới
-                        </button>
+                        <div class="d-flex gap-2">
+                            <div class="dropdown">
+                                <button class="btn btn-light btn-sm dropdown-toggle" type="button" id="sortDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                                    <i class="fas fa-sort me-1"></i>
+                                    Sắp xếp
+                                </button>
+                                <ul class="dropdown-menu">
+                                    <li><a class="dropdown-item" href="#" onclick="sortFiles('newest')">
+                                        <i class="fas fa-arrow-down me-2"></i>Mới nhất
+                                    </a></li>
+                                    <li><a class="dropdown-item" href="#" onclick="sortFiles('oldest')">
+                                        <i class="fas fa-arrow-up me-2"></i>Cũ nhất
+                                    </a></li>
+                                    <li><a class="dropdown-item" href="#" onclick="sortFiles('name')">
+                                        <i class="fas fa-sort-alpha-down me-2"></i>Tên A-Z
+                                    </a></li>
+                                    <li><a class="dropdown-item" href="#" onclick="sortFiles('size')">
+                                        <i class="fas fa-sort-amount-down me-2"></i>Kích thước
+                                    </a></li>
+                                </ul>
+                            </div>
+                            <button class="btn btn-light btn-sm" onclick="refreshFileList()">
+                                <i class="fas fa-sync-alt me-1"></i>
+                                Làm mới
+                            </button>
+                        </div>
                     </div>
                     
                     <ul class="nav nav-tabs">
@@ -794,15 +1003,26 @@
                                                     </span>
                                                     <div>
                                                         <div class="fw-bold">{{ file.metadata.get('original_filename', file.name) if file.metadata else file.name }}</div>
-                                                        {% if file.metadata and file.metadata.get('encryption_key') %}
-                                                            <span class="badge bg-success mt-1">
-                                                                <i class="fas fa-lock"></i> Đã mã hóa
-                                                            </span>
-                                                        {% else %}
-                                                            <span class="badge bg-warning mt-1">
-                                                                <i class="fas fa-unlock"></i> Chưa mã hóa
-                                                            </span>
-                                                        {% endif %}
+                                                        <div class="d-flex gap-2 mt-1">
+                                                            {% if file.metadata and file.metadata.get('encryption_key') %}
+                                                                <span class="badge bg-success">
+                                                                    <i class="fas fa-lock"></i> Đã mã hóa
+                                                                </span>
+                                                            {% else %}
+                                                                <span class="badge bg-warning">
+                                                                    <i class="fas fa-unlock"></i> Chưa mã hóa
+                                                                </span>
+                                                            {% endif %}
+                                                            {% if file.metadata and file.metadata.get('is_public') %}
+                                                                <span class="badge bg-primary">
+                                                                    <i class="fas fa-globe"></i> Công khai
+                                                                </span>
+                                                            {% else %}
+                                                                <span class="badge bg-secondary">
+                                                                    <i class="fas fa-lock"></i> Riêng tư
+                                                                </span>
+                                                            {% endif %}
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </td>
@@ -817,7 +1037,7 @@
                                                     <button type="button" class="btn btn-sm btn-secondary" onclick="openPreview('{{ file.name }}')">
                                                         <i class="fas fa-eye"></i> Xem
                                                     </button>
-                                                    {% if role == 'admin' %}
+                                                    {% if role == 'admin' or (file.metadata and file.metadata.get('uploaded_by') == username) %}
                                                         <a href="{{ url_for('delete', filename=file.name) }}" class="btn btn-sm btn-danger" 
                                                         onclick="return confirm('Bạn có chắc muốn xóa file này?');">
                                                             <i class="fas fa-trash"></i> Xóa
@@ -863,6 +1083,27 @@
         </div>
     </div>
 
+    <!-- Download Progress Modal -->
+    <div class="modal fade download-progress-modal" id="downloadModal" tabindex="-1" aria-labelledby="downloadModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="downloadModalLabel">
+                        <i class="fas fa-download"></i>
+                        <span>Đang tải file</span>
+                    </h5>
+                </div>
+                <div class="modal-body">
+                    <div class="download-status" id="downloadStatus">Đang chuẩn bị tải file...</div>
+                    <div class="download-progress">
+                        <div class="download-progress-bar" id="downloadProgressBar"></div>
+                    </div>
+                    <div id="downloadMessage"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         const uploadForm = document.getElementById('uploadForm');
@@ -873,12 +1114,15 @@
             e.preventDefault();
             
             if (!fileInput.files.length) {
-                alert('Vui lòng chọn file để tải lên!');
+                showToast('Vui lòng chọn file để tải lên!', 'warning');
                 return;
             }
 
             const file = fileInput.files[0];
             const visibility = document.querySelector('input[name="visibility"]:checked').value;
+            
+            // Show progress bar
+            showProgress();
             
             const formData = new FormData();
             formData.append('file', file);
@@ -891,13 +1135,17 @@
                 });
 
                 if (response.ok) {
+                    hideProgress();
+                    showToast('File đã được tải lên thành công!', 'success');
                     location.reload();
                 } else {
-                    throw new Error('Upload failed');
+                    const errorText = await response.text();
+                    throw new Error(errorText || 'Upload failed');
                 }
             } catch (error) {
                 console.error('Error:', error);
-                alert('Có lỗi xảy ra khi tải file lên. Vui lòng thử lại.');
+                hideProgress();
+                showToast('Có lỗi xảy ra khi tải file lên: ' + error.message, 'error');
             }
         });
 
@@ -962,6 +1210,211 @@
             frame.src = '';
             frame.style.display = 'none';
             document.getElementById('previewLoading').style.display = 'block';
+        });
+
+        // Progress Bar Functions
+        function showProgress() {
+            const progressContainer = document.getElementById('progressContainer');
+            const progressBar = document.getElementById('progressBar');
+            const progressText = document.getElementById('progressText');
+            
+            progressContainer.style.display = 'block';
+            progressBar.style.width = '0%';
+            progressText.textContent = 'Đang tải lên... 0%';
+            
+            // Simulate progress
+            let progress = 0;
+            const interval = setInterval(() => {
+                progress += Math.random() * 15;
+                if (progress > 90) progress = 90;
+                progressBar.style.width = progress + '%';
+                progressText.textContent = `Đang tải lên... ${Math.round(progress)}%`;
+                
+                if (progress >= 90) {
+                    clearInterval(interval);
+                }
+            }, 200);
+        }
+
+        function hideProgress() {
+            const progressContainer = document.getElementById('progressContainer');
+            const progressBar = document.getElementById('progressBar');
+            const progressText = document.getElementById('progressText');
+            
+            progressBar.style.width = '100%';
+            progressText.textContent = 'Hoàn thành! 100%';
+            
+            setTimeout(() => {
+                progressContainer.style.display = 'none';
+                progressBar.style.width = '0%';
+            }, 500);
+        }
+
+        // Toast Notification Functions
+        function showToast(message, type = 'info') {
+            const toastContainer = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = `custom-toast ${type}`;
+            
+            const icon = type === 'error' ? 'fas fa-exclamation-circle' : 
+                        type === 'success' ? 'fas fa-check-circle' : 
+                        type === 'warning' ? 'fas fa-exclamation-triangle' : 
+                        'fas fa-info-circle';
+            
+            toast.innerHTML = `
+                <div class="d-flex align-items-center">
+                    <i class="${icon} me-2"></i>
+                    <span>${message}</span>
+                    <button type="button" class="btn-close ms-auto" onclick="this.parentElement.parentElement.remove()"></button>
+                </div>
+            `;
+            
+            toastContainer.appendChild(toast);
+            
+            // Auto remove after 5 seconds
+            setTimeout(() => {
+                if (toast.parentElement) {
+                    toast.remove();
+                }
+            }, 5000);
+        }
+
+        // Download with Progress
+        function downloadWithProgress(filename) {
+            const downloadModal = new bootstrap.Modal(document.getElementById('downloadModal'));
+            const downloadStatus = document.getElementById('downloadStatus');
+            const downloadProgressBar = document.getElementById('downloadProgressBar');
+            const downloadMessage = document.getElementById('downloadMessage');
+            
+            // Show modal
+            downloadModal.show();
+            
+            // Reset progress
+            downloadProgressBar.style.width = '0%';
+            downloadStatus.textContent = 'Đang chuẩn bị tải file...';
+            downloadMessage.innerHTML = '';
+            
+            // Simulate progress
+            let progress = 0;
+            const progressInterval = setInterval(() => {
+                progress += Math.random() * 20;
+                if (progress > 85) progress = 85;
+                downloadProgressBar.style.width = progress + '%';
+                downloadStatus.textContent = `Đang tải file... ${Math.round(progress)}%`;
+            }, 300);
+            
+            // Start actual download
+            fetch(`/download/${encodeURIComponent(filename)}`)
+                .then(response => {
+                    if (!response.ok) {
+                        // Try to get error message from JSON response
+                        return response.json().then(errorData => {
+                            throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+                        }).catch(() => {
+                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        });
+                    }
+                    return response.blob();
+                })
+                .then(blob => {
+                    // Complete progress
+                    clearInterval(progressInterval);
+                    downloadProgressBar.style.width = '100%';
+                    downloadStatus.textContent = 'Hoàn thành!';
+                    
+                    // Create download link
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
+                    
+                    // Show success message
+                    downloadMessage.innerHTML = `
+                        <div class="download-success">
+                            <i class="fas fa-check-circle me-2"></i>
+                            File đã được tải xuống thành công!
+                        </div>
+                    `;
+                    
+                    // Close modal after 2 seconds
+                    setTimeout(() => {
+                        downloadModal.hide();
+                    }, 2000);
+                })
+                .catch(error => {
+                    clearInterval(progressInterval);
+                    downloadStatus.textContent = 'Lỗi khi tải file';
+                    downloadMessage.innerHTML = `
+                        <div class="download-error">
+                            <i class="fas fa-exclamation-circle me-2"></i>
+                            ${error.message}
+                        </div>
+                    `;
+                    
+                    // Show error toast
+                    showToast('Lỗi khi tải file: ' + error.message, 'error');
+                });
+        }
+
+        // Sort files function
+        function sortFiles(sortType) {
+            const tbody = document.querySelector('tbody');
+            if (!tbody) return;
+            
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            
+            rows.sort((a, b) => {
+                switch(sortType) {
+                    case 'newest':
+                        // Sort by time (newest first) - already sorted by default
+                        return 0;
+                    case 'oldest':
+                        // Sort by time (oldest first)
+                        return 1;
+                    case 'name':
+                        // Sort by filename A-Z
+                        const nameA = a.querySelector('.fw-bold').textContent.toLowerCase();
+                        const nameB = b.querySelector('.fw-bold').textContent.toLowerCase();
+                        return nameA.localeCompare(nameB);
+                    case 'size':
+                        // Sort by size (largest first)
+                        const sizeA = a.cells[1].textContent;
+                        const sizeB = b.cells[1].textContent;
+                        return sizeB.localeCompare(sizeA);
+                    default:
+                        return 0;
+                }
+            });
+            
+            // Clear tbody and re-append sorted rows
+            tbody.innerHTML = '';
+            rows.forEach(row => tbody.appendChild(row));
+            
+            // Update dropdown button text
+            const dropdownButton = document.getElementById('sortDropdown');
+            const sortTexts = {
+                'newest': 'Mới nhất',
+                'oldest': 'Cũ nhất', 
+                'name': 'Tên A-Z',
+                'size': 'Kích thước'
+            };
+            dropdownButton.innerHTML = `<i class="fas fa-sort me-1"></i>${sortTexts[sortType]}`;
+        }
+
+        // Override download links to use progress
+        document.addEventListener('DOMContentLoaded', function() {
+            const downloadLinks = document.querySelectorAll('a[href*="/download/"]');
+            downloadLinks.forEach(link => {
+                link.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const filename = this.href.split('/download/')[1];
+                    downloadWithProgress(filename);
+                });
+            });
         });
     </script>
 </body>

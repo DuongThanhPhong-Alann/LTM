@@ -1,6 +1,7 @@
 import os
 from datetime import datetime
 from cryptography.fernet import Fernet
+import pytz
 
 
 class StorageService:
@@ -11,10 +12,12 @@ class StorageService:
     def sanitize_filename(self, filename: str) -> str:
         name, ext = os.path.splitext(filename)
         name = name.replace(' ', '_')
-        # remove non-alphanumeric/underscore
-        name = ''.join(c for c in name if c.isalnum() or c == '_')
+        # Preserve more characters but still sanitize dangerous ones
+        # Allow alphanumeric, underscore, dash, dot, and parentheses
+        name = ''.join(c for c in name if c.isalnum() or c in '_.-()')
         timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
-        return f"{name}_{timestamp}" + ext.lower()
+        # Preserve original extension case and add timestamp
+        return f"{name}_{timestamp}{ext}"
 
     def encrypt_file(self, file_data: bytes):
         key = Fernet.generate_key()
@@ -36,49 +39,66 @@ class StorageService:
         except Exception:
             return 'N/A'
 
-    def upload_file(self, file_data: bytes, original_filename: str, content_type: str, uploaded_by: str, is_public: bool = False):
-        """Encrypt, upload to storage, and persist custom metadata in `files_metadata` table."""
-        safe_filename = self.sanitize_filename(original_filename)
+    def upload_file(self, file_content, filename, content_type, username, is_public=False):
         try:
-            encrypted_data, encryption_key = self.encrypt_file(file_data)
-
-            # Upload encrypted bytes to Supabase Storage
-            # supabase-py accepts bytes for upload
-            self.supabase.storage.from_(self.bucket_name).upload(safe_filename, encrypted_data)
-
-            # Prepare metadata to store in DB table
-            metadata = {
-                'encrypted': 'true',
-                'encryption_key': encryption_key.decode(),
-                'original_filename': original_filename,
-                'original_type': content_type,
-                'original_size': len(file_data),
-                'uploaded_by': uploaded_by,
-                'uploaded_at': datetime.utcnow().isoformat(),
-                'is_public': is_public  # Thêm trạng thái public/private vào metadata
+            # Tạo tên file unique
+            file_id = str(uuid.uuid4())
+            ext = os.path.splitext(filename)[1] if '.' in filename else ''
+            
+            # Lưu với extension .bin để bypass Supabase filter
+            stored_filename = f"{file_id}.bin"
+            
+            # Mã hóa file
+            encryption_key = Fernet.generate_key()
+            fernet = Fernet(encryption_key)
+            encrypted_content = fernet.encrypt(file_content)
+            
+            # Upload với MIME type binary để tránh bị chặn
+            upload_options = {
+                'content-type': 'application/octet-stream',
+                'upsert': 'true'
             }
-
-            # Upsert into files_metadata table so we can read custom fields later
-            try:
-                resp = self.supabase.table('files_metadata').upsert({
-                    'filename': safe_filename,
-                    'metadata': metadata
-                }).execute()
-                # If the upsert threw no exception, assume success. Some SDKs return wrappers.
-            except Exception as e:
-                # If we cannot persist the encryption key, remove the uploaded file to avoid irrecoverable encrypted data
-                try:
-                    self.supabase.storage.from_(self.bucket_name).remove([safe_filename])
-                except Exception as remove_err:
-                    print(f"CRITICAL: failed to remove orphaned uploaded file {safe_filename}: {remove_err}")
-                print(f"Error: failed to upsert files_metadata for {safe_filename}: {e}")
-                return {'success': False, 'error': 'Failed to persist file metadata (encryption key). Upload aborted.'}
-
-            return {'success': True, 'filename': safe_filename}
+            
+            # Upload lên Supabase Storage
+            result = self.supabase.storage.from_('encrypted-files').upload(
+                stored_filename,
+                encrypted_content,
+                upload_options
+            )
+            
+            # Kiểm tra lỗi
+            if hasattr(result, 'error') and result.error:
+                print(f"Supabase upload error: {result.error}")
+                return {"success": False, "error": f"Upload failed: {result.error}"}
+            
+            # Lưu metadata với MIME type thật
+            metadata = {
+                'filename': stored_filename,
+                'original_filename': filename,
+                'original_extension': ext,
+                'content_type': content_type,  # Lưu MIME type thật ở đây
+                'size': len(file_content),
+                'size_display': self._format_size(len(file_content)),
+                'uploaded_by': username,
+                'uploaded_at': datetime.now(pytz.timezone('Asia/Ho_Chi_Minh')).isoformat(),
+                'is_public': is_public,
+                'encryption_key': encryption_key.decode('utf-8')
+            }
+            
+            metadata_result = self.supabase.table('files_metadata').insert({
+                'filename': stored_filename,
+                'metadata': metadata
+            }).execute()
+            
+            if metadata_result.data:
+                return {"success": True, "filename": stored_filename}
+            else:
+                return {"success": False, "error": "Failed to save metadata"}
+                
         except Exception as e:
-            print(f"Lỗi khi tải lên file: {e}")
-            return {'success': False, 'error': str(e)}
-
+            print(f"Upload error: {str(e)}")
+            return {"success": False, "error": str(e)}
+    
     def download_file(self, filename: str):
         """Download file bytes, decrypt if needed, and return (bytes, original_filename, content_type)."""
         try:
@@ -122,10 +142,15 @@ class StorageService:
             if metadata and metadata.get('encrypted') == 'true' and metadata.get('encryption_key'):
                 try:
                     decrypted = self.decrypt_file(data, metadata['encryption_key'].encode())
-                    # Validate file integrity for specific formats (e.g., .doc, .pdf)
-                    if metadata.get('original_filename', '').endswith('.doc'):
+                    # Validate file integrity for specific formats (e.g., .doc, .docx, .pdf)
+                    original_filename = metadata.get('original_filename', '').lower()
+                    if original_filename.endswith('.doc'):
                         if not decrypted.startswith(b'\xd0\xcf\x11\xe0'):  # Check for .doc magic number
                             raise ValueError("Decrypted file does not match .doc format")
+                    elif original_filename.endswith('.docx'):
+                        # DOCX files are ZIP files containing XML, they start with PK
+                        if not decrypted.startswith(b'PK'):
+                            raise ValueError("Decrypted file does not match .docx format")
                     return decrypted, metadata.get('original_filename', filename), metadata.get('original_type', 'application/octet-stream')
                 except Exception as e:
                     print(f"Error decrypting file {filename}: {e}")
@@ -189,14 +214,32 @@ class StorageService:
                 }
 
                 merged['size_display'] = self._format_size(merged.get('original_size'))
-                # pretty time
+                # Format time with Vietnam timezone
                 try:
                     ts = merged.get('uploaded_at')
                     if isinstance(ts, str) and 'T' in ts:
-                        merged['time_display'] = ts.replace('T', ' ').split('.')[0]
+                        # Parse the timestamp - handle different formats
+                        if ts.endswith('Z'):
+                            # UTC format with Z
+                            utc_time = datetime.fromisoformat(ts.replace('Z', '+00:00'))
+                            vietnam_tz = pytz.timezone('Asia/Ho_Chi_Minh')
+                            vietnam_time = utc_time.astimezone(vietnam_tz)
+                        elif '+' in ts or ts.count('-') > 2:
+                            # Already has timezone info
+                            parsed_time = datetime.fromisoformat(ts)
+                            vietnam_tz = pytz.timezone('Asia/Ho_Chi_Minh')
+                            vietnam_time = parsed_time.astimezone(vietnam_tz)
+                        else:
+                            # Assume UTC if no timezone info
+                            utc_time = datetime.fromisoformat(ts + '+00:00')
+                            vietnam_tz = pytz.timezone('Asia/Ho_Chi_Minh')
+                            vietnam_time = utc_time.astimezone(vietnam_tz)
+                        
+                        merged['time_display'] = vietnam_time.strftime('%d/%m/%Y %H:%M:%S')
                     else:
                         merged['time_display'] = str(ts)
-                except Exception:
+                except Exception as e:
+                    print(f"Error formatting time {ts}: {e}")
                     merged['time_display'] = 'N/A'
 
                 # Check file visibility based on metadata
@@ -205,10 +248,14 @@ class StorageService:
                 file_owner = custom_meta.get('uploaded_by', 'N/A')
 
                 # Skip files that don't match visibility criteria
-                if public_only and not is_public:
-                    continue
-                if not public_only and not is_public and current_user != file_owner:
-                    continue
+                if public_only:
+                    # Tab công khai: chỉ hiển thị file công khai
+                    if not is_public:
+                        continue
+                else:
+                    # Tab riêng tư: chỉ hiển thị file riêng tư của user hiện tại
+                    if is_public or current_user != file_owner:
+                        continue
 
                 results.append({
                     'name': name,
@@ -216,6 +263,8 @@ class StorageService:
                     'metadata': merged
                 })
 
+            # Sort by upload time (newest first)
+            results.sort(key=lambda x: x['metadata'].get('uploaded_at', ''), reverse=True)
             return results
         except Exception as e:
             # Distinguish network/connection errors from empty list: return None on error

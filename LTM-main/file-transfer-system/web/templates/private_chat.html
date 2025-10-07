@@ -387,6 +387,173 @@
             height: 50px;
         }
     }
+    
+    /* Toast Notification */
+    .toast {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: white;
+        padding: 15px 20px;
+        border-radius: 12px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+        display: none;
+        align-items: center;
+        gap: 12px;
+        z-index: 3000;
+        animation: slideInRight 0.3s ease;
+        max-width: 350px;
+    }
+    
+    @keyframes slideInRight {
+        from {
+            opacity: 0;
+            transform: translateX(100px);
+        }
+        to {
+            opacity: 1;
+            transform: translateX(0);
+        }
+    }
+    
+    .toast.show {
+        display: flex;
+    }
+    
+    .toast.success {
+        border-left: 4px solid #28a745;
+        background: linear-gradient(135deg, #ffffff 0%, #f8fff9 100%);
+    }
+    
+    .toast.error {
+        border-left: 4px solid #dc3545;
+        background: linear-gradient(135deg, #ffffff 0%, #fff8f8 100%);
+    }
+    
+    .toast.warning {
+        border-left: 4px solid #ffc107;
+        background: linear-gradient(135deg, #ffffff 0%, #fffdf8 100%);
+    }
+    
+    .toast.info {
+        border-left: 4px solid #17a2b8;
+        background: linear-gradient(135deg, #ffffff 0%, #f8fcff 100%);
+    }
+    
+    .toast-icon {
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+    
+    .toast.success .toast-icon {
+        background: #d4edda;
+        color: #28a745;
+    }
+    
+    .toast.error .toast-icon {
+        background: #f8d7da;
+        color: #dc3545;
+    }
+    
+    .toast.warning .toast-icon {
+        background: #fff3cd;
+        color: #856404;
+    }
+    
+    .toast.info .toast-icon {
+        background: #d1ecf1;
+        color: #0c5460;
+    }
+    
+    /* File button styles */
+    .file-btn {
+        background: none;
+        border: none;
+        color: #666;
+        font-size: 18px;
+        padding: 8px 12px;
+        cursor: pointer;
+        border-radius: 50%;
+        transition: all 0.2s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .file-btn:hover {
+        background: #f0f0f0;
+        color: #007bff;
+    }
+    
+    .toast-message {
+        flex: 1;
+        font-size: 0.95rem;
+        color: #212529;
+        font-weight: 500;
+    }
+    
+    .toast-close {
+        background: none;
+        border: none;
+        color: #6c757d;
+        cursor: pointer;
+        padding: 0;
+        width: 20px;
+        height: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    /* File Attachment Styles */
+    .file-attachment {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px;
+        background: #f8f9fa;
+        border-radius: 8px;
+        margin-top: 8px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        border: 1px solid #e9ecef;
+    }
+    
+    .file-attachment:hover {
+        background: #e9ecef;
+        transform: translateY(-1px);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+    
+    .file-attachment-icon {
+        color: #0ea5e9;
+        font-size: 1.2rem;
+    }
+    
+    .file-attachment-info {
+        flex: 1;
+    }
+    
+    .file-attachment-name {
+        font-weight: 600;
+        color: #212529;
+        font-size: 0.9rem;
+    }
+    
+    .file-attachment-size {
+        font-size: 0.8rem;
+        color: #6c757d;
+    }
+    
+    .file-attachment i.fa-download {
+        color: #0ea5e9;
+        font-size: 1rem;
+    }
 </style>
 
 <div class="private-chat-container">
@@ -405,6 +572,9 @@
             </div>
         </div>
         <div class="chat-actions">
+            <a href="{{ url_for('private_chat_info', userid=userid) }}" class="action-btn info-btn" title="Thông tin">
+                <i class="fas fa-info-circle"></i>
+            </a>
             <a href="{{ url_for('chat') }}" class="action-btn back-btn" title="Quay lại">
                 <i class="fas fa-arrow-left"></i>
             </a>
@@ -418,10 +588,14 @@
                 {% for msg in messages %}
                 <div class="message {% if msg.senderid != userid %}sent{% else %}received{% endif %}" data-message-id="{{ msg.messageid }}">
                     <div class="message-avatar">
-                        {% if msg.senderid != userid %}
-                            {{ session['user'][0].upper() }}
+                        {% if msg.avatar_url %}
+                            <img src="{{ msg.avatar_url }}" alt="{{ msg.username or (session['user'] if msg.senderid != userid else chat_user) }}">
                         {% else %}
-                            {{ chat_user[0].upper() }}
+                            {% if msg.senderid != userid %}
+                                {{ session['user'][0].upper() }}
+                            {% else %}
+                                {{ chat_user[0].upper() }}
+                            {% endif %}
                         {% endif %}
                     </div>
                     <div class="message-content">
@@ -430,7 +604,7 @@
                             <span class="message-sender">
                                 {% if msg.senderid != userid %}Bạn{% else %}{{ chat_user }}{% endif %}
                             </span>
-                            <span class="message-time">{{ msg.createdat }}</span>
+                            <span class="message-time" data-time="{{ msg.createdat }}"></span>
                         </div>
                     </div>
                 </div>
@@ -448,6 +622,10 @@
     <!-- Message Input -->
     <div class="message-input-area">
         <form id="send-form" class="message-input-wrapper">
+            <input type="file" id="file-input" style="display: none;" accept="*/*">
+            <button type="button" class="file-btn" onclick="document.getElementById('file-input').click()" title="Gửi file">
+                <i class="fas fa-paperclip"></i>
+            </button>
             <input type="text" class="message-input" id="msg-input" 
                    placeholder="Nhập tin nhắn của bạn..." 
                    autocomplete="off">
@@ -458,6 +636,17 @@
     </div>
 </div>
 
+<!-- Toast Notification -->
+<div class="toast" id="toast">
+    <div class="toast-icon">
+        <i class="fas fa-check"></i>
+    </div>
+    <div class="toast-message"></div>
+    <button class="toast-close" onclick="hideToast()">
+        <i class="fas fa-times"></i>
+    </button>
+</div>
+
 <script>
     const userid = {{ userid }};
     const my_id = {{ my_id }};
@@ -465,11 +654,65 @@
     const my_username = "{{ session['user'] }}";
     let lastMessageIds = new Set();
     
-    // Load existing message IDs
+    // Load existing message IDs and format times
     document.querySelectorAll('.message').forEach(msg => {
         const msgId = msg.dataset.messageId;
         if (msgId) lastMessageIds.add(parseInt(msgId));
+        
+        // Format time for existing messages
+        const timeElement = msg.querySelector('.message-time');
+        if (timeElement && timeElement.dataset.time) {
+            timeElement.textContent = formatTime(timeElement.dataset.time);
+        }
     });
+    
+    // Toast notification functions
+    function showToast(message, type = 'success') {
+        const toast = document.getElementById('toast');
+        const toastMessage = toast.querySelector('.toast-message');
+        const toastIcon = toast.querySelector('.toast-icon i');
+        
+        toast.className = `toast show ${type}`;
+        toastMessage.textContent = message;
+        
+        if (type === 'success') {
+            toastIcon.className = 'fas fa-check';
+        } else if (type === 'error') {
+            toastIcon.className = 'fas fa-exclamation-circle';
+        } else if (type === 'warning') {
+            toastIcon.className = 'fas fa-exclamation-triangle';
+        } else {
+            toastIcon.className = 'fas fa-info-circle';
+        }
+        
+        // Auto hide after 2 seconds
+        setTimeout(() => {
+            hideToast();
+        }, 2000);
+    }
+    
+    function hideToast() {
+        document.getElementById('toast').classList.remove('show');
+    }
+    
+    function openChatFile(filename, originalFilename) {
+        // Kiểm tra quyền truy cập file trước khi mở
+        fetch(`/chat_file_access/${filename}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.access === 'owner' || data.access === 'shared') {
+                    // Có quyền truy cập, mở file
+                    const previewUrl = `/preview/${filename}`;
+                    window.open(previewUrl, '_blank');
+                } else {
+                    showToast('Bạn không có quyền truy cập file này', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error checking file access:', error);
+                showToast('Lỗi kiểm tra quyền truy cập file', 'error');
+            });
+    }
     
     function createMessageElement(msg) {
         const div = document.createElement('div');
@@ -483,13 +726,39 @@
             div.classList.add('received');
         }
         
-        const avatar = isSent ? my_username[0].toUpperCase() : chat_user[0].toUpperCase();
+        const avatarUrl = msg.avatar_url;
+        const username = msg.username || (isSent ? my_username : chat_user);
+        const avatar = avatarUrl 
+            ? `<img src="${avatarUrl}" alt="${username}">`
+            : (isSent ? my_username[0].toUpperCase() : chat_user[0].toUpperCase());
         const sender = isSent ? 'Bạn' : chat_user;
+        
+        // Check for file attachment
+        let fileAttachmentHtml = '';
+        if (msg.file_attachment) {
+            const fileData = typeof msg.file_attachment === 'string' 
+                ? JSON.parse(msg.file_attachment) 
+                : msg.file_attachment;
+            
+            fileAttachmentHtml = `
+                <div class="file-attachment" onclick="openChatFile('${fileData.filename}', '${fileData.original_filename}')">
+                    <i class="fas fa-file file-attachment-icon"></i>
+                    <div class="file-attachment-info">
+                        <div class="file-attachment-name">${fileData.original_filename}</div>
+                        <div class="file-attachment-size">${fileData.size}</div>
+                    </div>
+                    <i class="fas fa-download"></i>
+                </div>
+            `;
+        }
         
         div.innerHTML = `
             <div class="message-avatar">${avatar}</div>
             <div class="message-content">
-                <div class="message-bubble">${escapeHtml(msg.content)}</div>
+                <div class="message-bubble">
+                    ${escapeHtml(msg.content)}
+                    ${fileAttachmentHtml}
+                </div>
                 <div class="message-info">
                     <span class="message-sender">${sender}</span>
                     <span class="message-time">${formatTime(msg.createdat)}</span>
@@ -506,16 +775,40 @@
     }
     
     function formatTime(timeStr) {
+        if (!timeStr) return '';
+        
         const date = new Date(timeStr);
         const now = new Date();
+        
+        // Kiểm tra nếu date không hợp lệ
+        if (isNaN(date.getTime())) {
+            console.error('Invalid date:', timeStr);
+            return timeStr;
+        }
+        
         const diff = now - date;
         
+        // Nếu vừa gửi (dưới 1 phút)
         if (diff < 60000) return 'Vừa xong';
-        if (diff < 3600000) return `${Math.floor(diff / 60000)} phút trước`;
+        
+        // Nếu trong vòng 1 giờ, hiển thị số phút
+        if (diff < 3600000) {
+            const minutes = Math.floor(diff / 60000);
+            return `${minutes} phút trước`;
+        }
+        
+        // Nếu cùng ngày, hiển thị giờ:phút
         if (date.toDateString() === now.toDateString()) {
             return date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
         }
-        return date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+        
+        // Nếu khác ngày, hiển thị ngày/tháng và giờ:phút
+        return date.toLocaleDateString('vi-VN', { 
+            day: '2-digit', 
+            month: '2-digit', 
+            hour: '2-digit', 
+            minute: '2-digit' 
+        });
     }
     
     function fetchMessages() {
@@ -556,12 +849,75 @@
         });
     }
     
+    // Function to update all message times
+    function updateAllMessageTimes() {
+        document.querySelectorAll('.message-time[data-time]').forEach(timeElement => {
+            if (timeElement.dataset.time) {
+                timeElement.textContent = formatTime(timeElement.dataset.time);
+            }
+        });
+    }
+    
+    // File upload handling
+    document.getElementById('file-input').addEventListener('change', function(e) {
+        if (e.target.files.length > 0) {
+            uploadFile(e.target.files[0]);
+        }
+    });
+    
+    function uploadFile(file) {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('visibility', 'private');
+        
+        showToast('Đang upload file...', 'info');
+        
+        fetch('/upload_chat_file', {
+            method: 'POST',
+            body: formData
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success && data.file) {
+                // File uploaded, now share it
+                return fetch('/share_file_to_chat', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        filename: data.file.filename,
+                        chat_type: 'private',
+                        chat_id: {{ userid }}
+                    })
+                });
+            } else {
+                throw new Error(data.error || 'Upload failed');
+            }
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                showToast('Đã upload và gửi file thành công', 'success');
+                fetchMessages(); // Reload messages
+            } else {
+                showToast(data.error || 'Lỗi khi gửi file', 'error');
+            }
+        })
+        .catch(err => {
+            console.error('Error uploading file:', err);
+            showToast(err.message || 'Có lỗi xảy ra', 'error');
+        });
+    }
+    
     // Fetch messages and set polling
     fetchMessages();
     const pollInterval = setInterval(fetchMessages, 2000);
     
+    // Update message times every 30 seconds
+    const timeUpdateInterval = setInterval(updateAllMessageTimes, 30000);
+    
     window.onbeforeunload = function() {
         clearInterval(pollInterval);
+        clearInterval(timeUpdateInterval);
     };
 
     // Send message
@@ -583,6 +939,7 @@
         .then(data => {
             if (data.success) {
                 input.value = '';
+                showToast('Tin nhắn đã được gửi thành công!', 'success');
                 if (data.message && data.message.messageid) {
                     const messagesDiv = document.getElementById('messages');
                     const emptyState = messagesDiv.querySelector('.empty-state');
@@ -594,12 +951,12 @@
                     scrollToBottom();
                 }
             } else if (data.error) {
-                alert('Có lỗi khi gửi tin nhắn: ' + data.error);
+                showToast('Lỗi: ' + data.error, 'error');
             }
         })
         .catch(error => {
             console.error('Error sending message:', error);
-            alert('Có lỗi khi gửi tin nhắn. Vui lòng thử lại.');
+            showToast('Có lỗi khi gửi tin nhắn. Vui lòng thử lại!', 'error');
         })
         .finally(() => {
             input.disabled = false;

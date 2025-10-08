@@ -39,66 +39,54 @@ class StorageService:
         except Exception:
             return 'N/A'
 
-    def upload_file(self, file_content, filename, content_type, username, is_public=False):
+    def upload_file(self, file_data: bytes, original_filename: str, content_type: str, uploaded_by: str, is_public: bool = False):
+        """Encrypt, upload to storage, and persist custom metadata in `files_metadata` table."""
+        safe_filename = self.sanitize_filename(original_filename)
         try:
-            # Tạo tên file unique
-            file_id = str(uuid.uuid4())
-            ext = os.path.splitext(filename)[1] if '.' in filename else ''
+            encrypted_data, encryption_key = self.encrypt_file(file_data)
+
+            # Upload encrypted bytes to Supabase Storage
+            # supabase-py accepts bytes for upload
+            self.supabase.storage.from_(self.bucket_name).upload(safe_filename, encrypted_data)
+
+            # Prepare metadata to store in DB table
+            # Use Vietnam timezone for upload time
+            vietnam_tz = pytz.timezone('Asia/Ho_Chi_Minh')
+            vietnam_time = datetime.now(vietnam_tz)
             
-            # Lưu với extension .bin để bypass Supabase filter
-            stored_filename = f"{file_id}.bin"
-            
-            # Mã hóa file
-            encryption_key = Fernet.generate_key()
-            fernet = Fernet(encryption_key)
-            encrypted_content = fernet.encrypt(file_content)
-            
-            # Upload với MIME type binary để tránh bị chặn
-            upload_options = {
-                'content-type': 'application/octet-stream',
-                'upsert': 'true'
-            }
-            
-            # Upload lên Supabase Storage
-            result = self.supabase.storage.from_('encrypted-files').upload(
-                stored_filename,
-                encrypted_content,
-                upload_options
-            )
-            
-            # Kiểm tra lỗi
-            if hasattr(result, 'error') and result.error:
-                print(f"Supabase upload error: {result.error}")
-                return {"success": False, "error": f"Upload failed: {result.error}"}
-            
-            # Lưu metadata với MIME type thật
             metadata = {
-                'filename': stored_filename,
-                'original_filename': filename,
-                'original_extension': ext,
-                'content_type': content_type,  # Lưu MIME type thật ở đây
-                'size': len(file_content),
-                'size_display': self._format_size(len(file_content)),
-                'uploaded_by': username,
-                'uploaded_at': datetime.now(pytz.timezone('Asia/Ho_Chi_Minh')).isoformat(),
-                'is_public': is_public,
-                'encryption_key': encryption_key.decode('utf-8')
+                'encrypted': 'true',
+                'encryption_key': encryption_key.decode(),
+                'original_filename': original_filename,
+                'original_type': content_type,
+                'original_size': len(file_data),
+                'uploaded_by': uploaded_by,
+                'uploaded_at': vietnam_time.isoformat(),
+                'is_public': is_public  # Thêm trạng thái public/private vào metadata
             }
             
-            metadata_result = self.supabase.table('files_metadata').insert({
-                'filename': stored_filename,
-                'metadata': metadata
-            }).execute()
-            
-            if metadata_result.data:
-                return {"success": True, "filename": stored_filename}
-            else:
-                return {"success": False, "error": "Failed to save metadata"}
-                
+
+            # Upsert into files_metadata table so we can read custom fields later
+            try:
+                resp = self.supabase.table('files_metadata').upsert({
+                    'filename': safe_filename,
+                    'metadata': metadata
+                }).execute()
+                # If the upsert threw no exception, assume success. Some SDKs return wrappers.
+            except Exception as e:
+                # If we cannot persist the encryption key, remove the uploaded file to avoid irrecoverable encrypted data
+                try:
+                    self.supabase.storage.from_(self.bucket_name).remove([safe_filename])
+                except Exception as remove_err:
+                    print(f"CRITICAL: failed to remove orphaned uploaded file {safe_filename}: {remove_err}")
+                print(f"Error: failed to upsert files_metadata for {safe_filename}: {e}")
+                return {'success': False, 'error': 'Failed to persist file metadata (encryption key). Upload aborted.'}
+
+            return {'success': True, 'filename': safe_filename}
         except Exception as e:
-            print(f"Upload error: {str(e)}")
-            return {"success": False, "error": str(e)}
-    
+            print(f"Lỗi khi tải lên file: {e}")
+            return {'success': False, 'error': str(e)}
+
     def download_file(self, filename: str):
         """Download file bytes, decrypt if needed, and return (bytes, original_filename, content_type)."""
         try:

@@ -11,8 +11,8 @@ from services.storage_service import StorageService
 from services.user_service import UserService
 import base64
 import mimetypes
-import win32com.client
-import pythoncom
+from docx import Document
+import subprocess
 
 def convert_docx_to_doc(docx_path):
     try:
@@ -233,36 +233,16 @@ def upload():
         flash('File rỗng!', 'error')
         return redirect(url_for('index'))
     
-    # Xác định MIME type dựa trên extension
-    ext = os.path.splitext(file.filename)[1].lower()
-    
-    # Map extension to MIME type
-    mime_map = {
-        '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        '.doc': 'application/msword',
-        '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        '.xls': 'application/vnd.ms-excel',
-        '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-        '.ppt': 'application/vnd.ms-powerpoint',
-        '.pdf': 'application/pdf',
-        '.txt': 'text/plain',
-        '.jpg': 'image/jpeg',
-        '.jpeg': 'image/jpeg',
-        '.png': 'image/png',
-        '.gif': 'image/gif',
-        '.zip': 'application/zip',
-        '.rar': 'application/x-rar-compressed',
-        '.7z': 'application/x-7z-compressed'
-    }
-    
-    # Lấy MIME type từ map hoặc guess
-    if ext in mime_map:
-        content_type = mime_map[ext]
-    else:
-        content_type = file.content_type
-        if not content_type or content_type == 'application/octet-stream':
-            guessed_type, _ = mimetypes.guess_type(file.filename)
-            content_type = guessed_type or 'application/octet-stream'
+    # Improved MIME type detection
+    content_type = file.content_type
+    if not content_type or content_type == 'application/octet-stream':
+        # Try to detect MIME type from file extension
+        guessed_type, _ = mimetypes.guess_type(file.filename)
+        if guessed_type:
+            content_type = guessed_type
+        else:
+            # For unknown extensions, use generic binary type
+            content_type = 'application/octet-stream'
     
     visibility = request.form.get('visibility', 'private')
     is_public = visibility == 'public'
@@ -274,7 +254,6 @@ def upload():
         session['user'],
         is_public
     )
-    
     if isinstance(success, dict):
         if success.get('success'):
             flash(f'File {file.filename} đã được mã hóa và tải lên thành công!', 'success')
@@ -287,6 +266,7 @@ def upload():
             flash('Lỗi khi tải lên file!', 'error')
         
     return redirect(url_for('index'))
+
 @app.route('/download/<filename>')
 def download(filename):
     if 'user' not in session:
@@ -1300,40 +1280,18 @@ def upload_chat_file():
     if file.filename == '':
         return jsonify({"error": "No file selected"}), 400
     
-    # Check if file is .docx
+    # Read file content
+    file_content = file.read()
+    if len(file_content) == 0:
+        return jsonify({"error": "Empty file"}), 400
+
     filename = file.filename
-    is_docx = filename.lower().endswith('.docx')
-    
-    if is_docx:
-        # Save the uploaded .docx file temporarily
-        temp_docx = tempfile.NamedTemporaryFile(delete=False, suffix='.docx')
-        file_content = file.read()
-        temp_docx.write(file_content)
-        temp_docx.close()
-        
-        try:
-            # Convert to .doc
-            doc_content = convert_docx_to_doc(temp_docx.name)
-            if doc_content is None:
-                return jsonify({"error": "Failed to convert DOCX to DOC format"}), 400
-            
-            # Update file content and name
-            file_content = doc_content
-            filename = os.path.splitext(filename)[0] + '.doc'
-            content_type = 'application/msword'
-            
-        finally:
-            # Clean up temp file
-            try:
-                os.unlink(temp_docx.name)
-            except:
-                pass
+    # If it's a .docx file, save it as .doc
+    if filename.lower().endswith('.docx'):
+        # Change the extension to .doc
+        filename = os.path.splitext(filename)[0] + '.doc'
+        content_type = 'application/msword'
     else:
-        # For non-docx files, read normally
-        file_content = file.read()
-        if len(file_content) == 0:
-            return jsonify({"error": "Empty file"}), 400
-        
         # Regular MIME type detection
         content_type = file.content_type
     if not content_type or content_type == 'application/octet-stream':
@@ -2011,9 +1969,7 @@ def set_nickname():
         if not target_userid:
             return jsonify({"error": "Target user ID is required"}), 400
         
-        # Tạm thời lưu trong session hoặc tạo bảng nicknames
-        # Có thể tạo bảng nicknames với (userid, target_userid, nickname)
-        # Tạm thời return success
+        
         return jsonify({"success": True, "message": "Đã đặt biệt danh"})
     
     except Exception as e:

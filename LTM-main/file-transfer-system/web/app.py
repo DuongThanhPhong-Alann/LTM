@@ -13,6 +13,10 @@ import base64
 import mimetypes
 from docx import Document
 import subprocess
+import re
+import random
+import requests
+from datetime import datetime, timedelta
 
 def convert_docx_to_doc(docx_path):
     try:
@@ -129,30 +133,6 @@ storage_service = StorageService(supabase_client)
 user_service = UserService(supabase_client)
 
 # ==================== AUTH ROUTES ====================
-
-@app.route('/register', methods=['GET', 'POST'])
-def register():
-    if request.method == 'POST':
-        username = request.form.get('username', '')
-        password = request.form.get('password', '')
-        confirm_password = request.form.get('confirm_password', '')
-        
-        if not all([username, password, confirm_password]):
-            flash('Vui lòng điền đầy đủ thông tin!', 'error')
-            return redirect(url_for('register'))
-            
-        if password != confirm_password:
-            flash('Mật khẩu không khớp!', 'error')
-            return redirect(url_for('register'))
-            
-        success = user_service.register(username, password)
-        if success:
-            flash('Đăng ký tài khoản thành công!', 'success')
-            return redirect(url_for('login'))
-        else:
-            flash('Tên đăng nhập đã tồn tại hoặc có lỗi xảy ra!', 'error')
-            
-    return render_template('register.html')
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -1975,5 +1955,231 @@ def set_nickname():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# N8N Webhook URL - Thay bằng URL webhook của bạn
+N8N_WEBHOOK_URL = "https://n8n.vtcmobile.vn/webhook/send-otp"
+
+def validate_email(email):
+    """Kiểm tra định dạng email"""
+    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    return re.match(pattern, email) is not None
+
+def validate_password(password):
+    """Kiểm tra mật khẩu mạnh: 
+    - Ít nhất 8 ký tự
+    - Có chữ hoa, chữ thường, số
+    """
+    if len(password) < 8:
+        return False, "Mật khẩu phải có ít nhất 8 ký tự"
+    
+    if not re.search(r'[A-Z]', password):
+        return False, "Mật khẩu phải có ít nhất 1 chữ hoa"
+    
+    if not re.search(r'[a-z]', password):
+        return False, "Mật khẩu phải có ít nhất 1 chữ thường"
+    
+    if not re.search(r'[0-9]', password):
+        return False, "Mật khẩu phải có ít nhất 1 chữ số"
+    
+    return True, "OK"
+
+def generate_otp():
+    """Tạo mã OTP 6 số"""
+    return ''.join([str(random.randint(0, 9)) for _ in range(6)])
+
+def send_otp_via_n8n(email, otp_code, username):
+    """Gửi OTP qua N8N webhook"""
+    try:
+        payload = {
+            "email": email,
+            "otp_code": otp_code,
+            "username": username,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        response = requests.post(
+            N8N_WEBHOOK_URL,
+            json=payload,
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            return True, "Email đã được gửi"
+        else:
+            return False, f"Lỗi gửi email: {response.status_code}"
+            
+    except requests.exceptions.Timeout:
+        return False, "Timeout khi gửi email"
+    except Exception as e:
+        return False, f"Lỗi: {str(e)}"
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        email = request.form.get('email', '').strip()
+        password = request.form.get('password', '')
+        confirm_password = request.form.get('confirm_password', '')
+        
+        # Validation
+        if not all([username, email, password, confirm_password]):
+            flash('Vui lòng điền đầy đủ thông tin!', 'error')
+            return redirect(url_for('register'))
+        
+        # Validate email
+        if not validate_email(email):
+            flash('Email không đúng định dạng!', 'error')
+            return redirect(url_for('register'))
+        
+        # Validate password
+        is_valid, message = validate_password(password)
+        if not is_valid:
+            flash(message, 'error')
+            return redirect(url_for('register'))
+        
+        if password != confirm_password:
+            flash('Mật khẩu không khớp!', 'error')
+            return redirect(url_for('register'))
+        
+        # Kiểm tra username đã tồn tại
+        existing_user = supabase_client.table('users').select('username').eq('username', username).execute()
+        if existing_user.data:
+            flash('Tên đăng nhập đã tồn tại!', 'error')
+            return redirect(url_for('register'))
+        
+        # Kiểm tra email đã tồn tại
+        existing_email = supabase_client.table('users').select('email').eq('email', email).execute()
+        if existing_email.data:
+            flash('Email đã được sử dụng!', 'error')
+            return redirect(url_for('register'))
+        
+        # Kiểm tra pending registration
+        pending = supabase_client.table('pending_registrations').select('*').eq('email', email).execute()
+        if pending.data:
+            # Xóa pending cũ
+            supabase_client.table('pending_registrations').delete().eq('email', email).execute()
+        
+        # Tạo OTP
+        otp_code = generate_otp()
+        
+        # Hash password (sử dụng service của bạn)
+        hashed_password = user_service._hash_password(password)
+        
+        # Lưu vào pending_registrations
+        expires_at = (datetime.now() + timedelta(minutes=15)).isoformat()
+        
+        try:
+            supabase_client.table('pending_registrations').insert({
+                'username': username,
+                'email': email,
+                'password': hashed_password,
+                'verification_code': otp_code,
+                'expires_at': expires_at
+            }).execute()
+            
+            # Gửi OTP qua N8N
+            success, message = send_otp_via_n8n(email, otp_code, username)
+            
+            if success:
+                # Lưu email vào session để verify
+                session['pending_email'] = email
+                session['pending_username'] = username
+                flash('Mã xác thực đã được gửi đến email của bạn!', 'success')
+                return redirect(url_for('verify_registration'))
+            else:
+                # Xóa pending nếu gửi email thất bại
+                supabase_client.table('pending_registrations').delete().eq('email', email).execute()
+                flash(f'Không thể gửi email: {message}', 'error')
+                return redirect(url_for('register'))
+                
+        except Exception as e:
+            flash(f'Có lỗi xảy ra: {str(e)}', 'error')
+            return redirect(url_for('register'))
+    
+    return render_template('register.html')
+
+@app.route('/verify-registration', methods=['GET', 'POST'])
+def verify_registration():
+    if 'pending_email' not in session:
+        flash('Vui lòng đăng ký trước!', 'error')
+        return redirect(url_for('register'))
+    
+    if request.method == 'POST':
+        otp_code = request.form.get('otp_code', '').strip()
+        email = session.get('pending_email')
+        
+        if not otp_code or len(otp_code) != 6:
+            flash('Mã xác thực phải có 6 chữ số!', 'error')
+            return redirect(url_for('verify_registration'))
+        
+        # Gọi function verify
+        try:
+            result = supabase_client.rpc('verify_registration_code', {
+                'p_email': email,
+                'p_code': otp_code
+            }).execute()
+            
+            if result.data and len(result.data) > 0:
+                verification = result.data[0]
+                
+                if verification['success']:
+                    # Clear session
+                    session.pop('pending_email', None)
+                    session.pop('pending_username', None)
+                    
+                    flash('Đăng ký thành công! Bạn có thể đăng nhập ngay.', 'success')
+                    return redirect(url_for('login'))
+                else:
+                    flash(verification['message'], 'error')
+                    return redirect(url_for('verify_registration'))
+            else:
+                flash('Có lỗi xảy ra khi xác thực!', 'error')
+                return redirect(url_for('verify_registration'))
+                
+        except Exception as e:
+            flash(f'Lỗi: {str(e)}', 'error')
+            return redirect(url_for('verify_registration'))
+    
+    return render_template('verify_registration.html', 
+                         email=session.get('pending_email'))
+
+@app.route('/resend-otp', methods=['POST'])
+def resend_otp():
+    """Gửi lại mã OTP"""
+    if 'pending_email' not in session:
+        return jsonify({"error": "Không tìm thấy thông tin đăng ký"}), 400
+    
+    email = session.get('pending_email')
+    username = session.get('pending_username')
+    
+    try:
+        # Lấy pending registration
+        pending = supabase_client.table('pending_registrations').select('*').eq('email', email).execute()
+        
+        if not pending.data:
+            return jsonify({"error": "Phiên đăng ký đã hết hạn"}), 400
+        
+        # Tạo OTP mới
+        new_otp = generate_otp()
+        expires_at = (datetime.now() + timedelta(minutes=15)).isoformat()
+        
+        # Cập nhật OTP và reset attempts
+        supabase_client.table('pending_registrations').update({
+            'verification_code': new_otp,
+            'verification_attempts': 0,
+            'expires_at': expires_at
+        }).eq('email', email).execute()
+        
+        # Gửi OTP mới
+        success, message = send_otp_via_n8n(email, new_otp, username)
+        
+        if success:
+            return jsonify({"success": True, "message": "Đã gửi lại mã xác thực"}), 200
+        else:
+            return jsonify({"error": message}), 500
+            
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
+    
+    

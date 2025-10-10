@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cài đặt nhóm - {{ room.roomname }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        .settings-container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+            margin: 20px auto;
+            max-width: 800px;
+        }
+        
+        .settings-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+            position: relative;
+        }
+        
+        .group-avatar {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            margin: 0 auto 15px;
+            border: 3px solid rgba(255,255,255,0.3);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .group-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .avatar-upload {
+            position: absolute;
+            bottom: -5px;
+            right: -5px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        
+        .settings-title {
+            font-size: 1.8rem;
+            font-weight: 600;
+            margin: 0;
+        }
+        
+        .settings-subtitle {
+            opacity: 0.9;
+            margin: 5px 0 0;
+        }
+        
+        .settings-content {
+            padding: 30px;
+        }
+        
+        .section {
+            margin-bottom: 30px;
+        }
+        
+        .section-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-label {
+            font-weight: 500;
+            color: #555;
+            margin-bottom: 8px;
+        }
+        
+        .form-control {
+            border: 2px solid #e9ecef;
+            border-radius: 10px;
+            padding: 12px 15px;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+        
+        .form-control:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 10px;
+            padding: 12px 25px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-danger {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%);
+            border: none;
+            border-radius: 8px;
+            padding: 8px 15px;
+            font-size: 0.9rem;
+        }
+        
+        .btn-success {
+            background: linear-gradient(135deg, #51cf66 0%, #40c057 100%);
+            border: none;
+            border-radius: 8px;
+            padding: 8px 15px;
+            font-size: 0.9rem;
+        }
+        
+        .members-list {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 20px;
+        }
+        
+        .member-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 15px;
+            background: white;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+        
+        .member-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .member-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: #e9ecef;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            color: #666;
+            overflow: hidden;
+        }
+        
+        .member-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .member-details h6 {
+            margin: 0;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .member-details small {
+            color: #666;
+        }
+        
+        .online-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #51cf66;
+        }
+        
+        .offline-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #adb5bd;
+        }
+        
+        .back-btn {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-decoration: none;
+            transition: all 0.3s ease;
+        }
+        
+        .back-btn:hover {
+            background: rgba(255,255,255,0.3);
+            color: white;
+            transform: translateY(-2px);
+        }
+        
+        .add-member-form {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .add-member-form .form-control {
+            flex: 1;
+        }
+        
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            padding: 15px 20px;
+            display: none;
+            align-items: center;
+            gap: 15px;
+            z-index: 1000;
+            min-width: 300px;
+        }
+        
+        .toast.show {
+            display: flex;
+            animation: slideIn 0.3s ease;
+        }
+        
+        .toast-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+        }
+        
+        .toast.success .toast-icon {
+            background: #d4edda;
+            color: #28a745;
+        }
+        
+        .toast.error .toast-icon {
+            background: #f8d7da;
+            color: #dc3545;
+        }
+        
+        .toast.warning .toast-icon {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        .toast.info .toast-icon {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+        
+        .toast-message {
+            flex: 1;
+            font-size: 0.95rem;
+            color: #212529;
+        }
+        
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #666;
+        }
+        
+        .empty-state i {
+            font-size: 3rem;
+            color: #ccc;
+            margin-bottom: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="settings-container">
+            <div class="settings-header">
+                <a href="{{ url_for('chat') }}" class="back-btn" title="Quay lại">
+                    <i class="fas fa-arrow-left"></i>
+                </a>
+                
+                <div class="group-avatar">
+                    {% if room.avatar_url %}
+                        <img src="{{ room.avatar_url }}" alt="{{ room.roomname }}">
+                    {% else %}
+                        <i class="fas fa-users"></i>
+                    {% endif %}
+                    <input type="file" id="avatarInput" accept="image/*" style="display: none;">
+                    <button class="avatar-upload" onclick="document.getElementById('avatarInput').click()">
+                        <i class="fas fa-camera"></i>
+                    </button>
+                </div>
+                
+                <h1 class="settings-title">{{ room.roomname }}</h1>
+                <p class="settings-subtitle">Cài đặt nhóm chat</p>
+                {% if room.avatar_uploader %}
+                <p class="settings-subtitle" style="font-size: 0.9rem; opacity: 0.8;">
+                    Ảnh đại diện được tải lên bởi {{ room.avatar_uploader.username }}
+                    {% if room.avatar_uploaded_at %}
+                        - {{ room.avatar_uploaded_at }}
+                    {% endif %}
+                </p>
+                {% endif %}
+            </div>
+            
+            <div class="settings-content">
+                <!-- Thông tin nhóm -->
+                <div class="section">
+                    <h3 class="section-title">
+                        <i class="fas fa-info-circle"></i>
+                        Thông tin nhóm
+                    </h3>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Tên nhóm</label>
+                        <input type="text" class="form-control" id="roomName" value="{{ room.roomname }}" placeholder="Nhập tên nhóm">
+                    </div>
+                    
+                    <button class="btn btn-primary" onclick="updateGroupInfo()">
+                        <i class="fas fa-save me-2"></i>
+                        Lưu thay đổi
+                    </button>
+                </div>
+                
+                <!-- Thành viên nhóm -->
+                <div class="section">
+                    <h3 class="section-title">
+                        <i class="fas fa-users"></i>
+                        Thành viên nhóm ({{ members|length }})
+                    </h3>
+                    
+                    <div class="members-list">
+                        {% if members %}
+                            {% for member in members %}
+                            <div class="member-item">
+                                <div class="member-info">
+                                    <div class="member-avatar">
+                                        {% if member.avatar_url %}
+                                            <img src="{{ member.avatar_url }}" alt="{{ member.username }}">
+                                        {% else %}
+                                            {{ member.username[0].upper() }}
+                                        {% endif %}
+                                    </div>
+                                    <div class="member-details">
+                                        <h6>{{ member.username }}</h6>
+                                        <small>
+                                            {% if member.is_online %}
+                                                <span class="online-indicator"></span> Đang hoạt động
+                                            {% else %}
+                                                <span class="offline-indicator"></span> 
+                                                {% if member.last_seen %}
+                                                    Hoạt động lần cuối: {{ member.last_seen }}
+                                                {% else %}
+                                                    Chưa hoạt động
+                                                {% endif %}
+                                            {% endif %}
+                                        </small>
+                                    </div>
+                                </div>
+                                {% if is_room_creator and member.userid != session.get('userid') %}
+                                <button class="btn btn-danger" onclick="removeMember({{ member.userid }}, '{{ member.username }}')">
+                                    <i class="fas fa-user-times me-1"></i>
+                                    Xóa
+                                </button>
+                                {% elif not is_room_creator and member.userid == session.get('userid') %}
+                                <button class="btn btn-warning" onclick="leaveGroup()">
+                                    <i class="fas fa-sign-out-alt me-1"></i>
+                                    Rời nhóm
+                                </button>
+                                {% endif %}
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="empty-state">
+                                <i class="fas fa-users"></i>
+                                <h5>Chưa có thành viên</h5>
+                                <p>Thêm thành viên vào nhóm để bắt đầu trò chuyện</p>
+                            </div>
+                        {% endif %}
+                    </div>
+                    
+                    <!-- Thêm thành viên -->
+                    <div class="add-member-form">
+                        <input type="text" class="form-control" id="newMemberUsername" placeholder="Nhập tên người dùng">
+                        <button class="btn btn-success" onclick="addMember()">
+                            <i class="fas fa-user-plus me-1"></i>
+                            Thêm
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Xóa nhóm (chỉ người tạo) -->
+                {% if is_room_creator %}
+                <div class="section">
+                    <h3 class="section-title">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        Quản lý nhóm
+                    </h3>
+                    <div class="alert alert-warning">
+                        <strong>Cảnh báo:</strong> Xóa nhóm sẽ xóa vĩnh viễn tất cả dữ liệu và không thể khôi phục.
+                    </div>
+                    <button class="btn btn-danger" onclick="deleteGroup()">
+                        <i class="fas fa-trash me-1"></i>
+                        Xóa nhóm
+                    </button>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- Toast Notification -->
+    <div class="toast" id="toast">
+        <div class="toast-icon">
+            <i class="fas fa-info-circle"></i>
+        </div>
+        <div class="toast-message" id="toastMessage"></div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const roomId = {{ room.roomid }};
+        
+        // Toast notification functions
+        function showToast(message, type = 'info') {
+            const toast = document.getElementById('toast');
+            const toastIcon = toast.querySelector('.toast-icon i');
+            const toastMessage = document.getElementById('toastMessage');
+            
+            toast.className = `toast show ${type}`;
+            toastMessage.textContent = message;
+            
+            if (type === 'success') {
+                toastIcon.className = 'fas fa-check';
+            } else if (type === 'error') {
+                toastIcon.className = 'fas fa-exclamation-circle';
+            } else if (type === 'warning') {
+                toastIcon.className = 'fas fa-exclamation-triangle';
+            } else {
+                toastIcon.className = 'fas fa-info-circle';
+            }
+            
+            // Auto hide after 3 seconds
+            setTimeout(() => {
+                hideToast();
+            }, 3000);
+        }
+        
+        function hideToast() {
+            document.getElementById('toast').classList.remove('show');
+        }
+        
+        // Update group info
+        function updateGroupInfo() {
+            const roomName = document.getElementById('roomName').value.trim();
+            
+            if (!roomName) {
+                showToast('Tên nhóm không được để trống', 'error');
+                return;
+            }
+            
+            fetch('/update_group_info', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    roomid: roomId,
+                    roomname: roomName
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    // Update title
+                    document.querySelector('.settings-title').textContent = roomName;
+                } else {
+                    showToast(data.error, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showToast('Có lỗi xảy ra', 'error');
+            });
+        }
+        
+        // Upload group avatar
+        document.getElementById('avatarInput').addEventListener('change', function(e) {
+            if (e.target.files.length > 0) {
+                uploadGroupAvatar(e.target.files[0]);
+            }
+        });
+        
+        function uploadGroupAvatar(file) {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('roomid', roomId);
+            
+            showToast('Đang upload ảnh đại diện...', 'info');
+            
+            fetch('/upload_group_avatar', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    // Update avatar display
+                    const avatarDiv = document.querySelector('.group-avatar');
+                    avatarDiv.innerHTML = `
+                        <img src="${data.avatar_url}" alt="${document.getElementById('roomName').value}">
+                        <input type="file" id="avatarInput" accept="image/*" style="display: none;">
+                        <button class="avatar-upload" onclick="document.getElementById('avatarInput').click()">
+                            <i class="fas fa-camera"></i>
+                        </button>
+                    `;
+                    // Re-attach event listener
+                    document.getElementById('avatarInput').addEventListener('change', function(e) {
+                        if (e.target.files.length > 0) {
+                            uploadGroupAvatar(e.target.files[0]);
+                        }
+                    });
+                } else {
+                    showToast(data.error, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showToast('Có lỗi xảy ra khi upload ảnh', 'error');
+            });
+        }
+        
+        // Add member
+        function addMember() {
+            const username = document.getElementById('newMemberUsername').value.trim();
+            
+            if (!username) {
+                showToast('Vui lòng nhập tên người dùng', 'error');
+                return;
+            }
+            
+            fetch('/add_group_member', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    roomid: roomId,
+                    username: username
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    document.getElementById('newMemberUsername').value = '';
+                    // Reload page to show new member
+                    setTimeout(() => {
+                        location.reload();
+                    }, 1500);
+                } else {
+                    showToast(data.error, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showToast('Có lỗi xảy ra', 'error');
+            });
+        }
+        
+        // Remove member
+        function removeMember(userid, username) {
+            if (!confirm(`Bạn có chắc chắn muốn xóa ${username} khỏi nhóm?`)) {
+                return;
+            }
+            
+            fetch('/remove_group_member', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    roomid: roomId,
+                    userid: userid
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    // Reload page to update member list
+                    setTimeout(() => {
+                        location.reload();
+                    }, 1500);
+                } else {
+                    showToast(data.error, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showToast('Có lỗi xảy ra', 'error');
+            });
+        }
+        
+        // Enter key to add member
+        document.getElementById('newMemberUsername').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                addMember();
+            }
+        });
+        
+        // Leave group function
+        function leaveGroup() {
+            if (!confirm('Bạn có chắc chắn muốn rời khỏi nhóm này?')) {
+                return;
+            }
+            
+            fetch('/leave_group', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    roomid: roomId
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    // Redirect to chat after leaving
+                    setTimeout(() => {
+                        window.location.href = '/chat';
+                    }, 1500);
+                } else {
+                    showToast(data.error, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showToast('Có lỗi xảy ra', 'error');
+            });
+        }
+        
+        // Delete group function
+        function deleteGroup() {
+            const confirmText = prompt('Để xác nhận xóa nhóm, vui lòng nhập "XÓA NHÓM" (viết hoa):');
+            if (confirmText !== 'XÓA NHÓM') {
+                showToast('Xác nhận không đúng', 'error');
+                return;
+            }
+            
+            if (!confirm('CẢNH BÁO: Bạn có chắc chắn muốn XÓA VĨNH VIỄN nhóm này? Hành động này không thể hoàn tác!')) {
+                return;
+            }
+            
+            fetch('/delete_group', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    roomid: roomId
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    // Redirect to chat after deleting
+                    setTimeout(() => {
+                        window.location.href = '/chat';
+                    }, 1500);
+                } else {
+                    showToast(data.error, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showToast('Có lỗi xảy ra', 'error');
+            });
+        }
+    </script>
+</body>
+</html>

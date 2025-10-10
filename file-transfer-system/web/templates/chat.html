@@ -347,10 +347,22 @@
     
     .toast.success {
         border-left: 4px solid #28a745;
+        background: linear-gradient(135deg, #ffffff 0%, #f8fff9 100%);
     }
     
     .toast.error {
         border-left: 4px solid #dc3545;
+        background: linear-gradient(135deg, #ffffff 0%, #fff8f8 100%);
+    }
+    
+    .toast.warning {
+        border-left: 4px solid #ffc107;
+        background: linear-gradient(135deg, #ffffff 0%, #fffdf8 100%);
+    }
+    
+    .toast.info {
+        border-left: 4px solid #17a2b8;
+        background: linear-gradient(135deg, #ffffff 0%, #f8fcff 100%);
     }
     
     .toast-icon {
@@ -371,6 +383,16 @@
     .toast.error .toast-icon {
         background: #f8d7da;
         color: #dc3545;
+    }
+    
+    .toast.warning .toast-icon {
+        background: #fff3cd;
+        color: #856404;
+    }
+    
+    .toast.info .toast-icon {
+        background: #d1ecf1;
+        color: #0c5460;
     }
     
     .toast-message {
@@ -803,6 +825,34 @@
         color: #6c757d;
     }
     
+    .chat-header-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    
+    .settings-btn {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+    }
+    
+    .settings-btn:hover {
+        background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+        color: white;
+        transform: translateY(-2px);
+    }
+    
+    .info-btn {
+        background: linear-gradient(135deg, #0ea5e9 0%, #10b981 100%);
+        color: white;
+    }
+    
+    .info-btn:hover {
+        background: linear-gradient(135deg, #0d94d2 0%, #0ea574 100%);
+        color: white;
+        transform: translateY(-2px);
+    }
+    
     .messages-container {
         flex: 1;
         overflow-y: auto;
@@ -1119,7 +1169,7 @@
                         <strong>Nhấn để chọn file</strong> hoặc kéo thả file vào đây
                     </div>
                     <div class="upload-hint">
-                        File sẽ được upload dưới chế độ công khai
+                        File sẽ được upload dưới chế độ riêng tư
                     </div>
                 </div>
                 <input type="file" id="fileInput" accept="*/*">
@@ -1158,7 +1208,7 @@
             <div class="modal-title">Xác nhận upload</div>
         </div>
         <div class="modal-body">
-            <p>File này sẽ được upload lên hệ thống dưới <strong>chế độ công khai</strong>.</p>
+            <p>File này sẽ được upload lên hệ thống dưới <strong>chế độ riêng tư</strong>.</p>
             <p style="margin-top: 10px;">Bạn có muốn tiếp tục?</p>
         </div>
         <div class="modal-actions">
@@ -1217,9 +1267,13 @@
         
         <div class="conversations-list" id="conversationsList">
             {% for room in rooms %}
-            <div class="conversation-item" data-type="group" data-id="{{ room.roomid }}" data-name="{{ room.roomname }}">
+            <div class="conversation-item" data-type="group" data-id="{{ room.roomid }}" data-name="{{ room.roomname }}" data-avatar="{{ room.avatar_url or '' }}">
                 <div class="conversation-avatar">
-                    <i class="fas fa-users"></i>
+                    {% if room.avatar_url %}
+                        <img src="{{ room.avatar_url }}" alt="{{ room.roomname }}">
+                    {% else %}
+                        <i class="fas fa-users"></i>
+                    {% endif %}
                 </div>
                 <div class="conversation-info">
                     <div class="conversation-name">{{ room.roomname }}</div>
@@ -1317,17 +1371,44 @@
         
         if (type === 'success') {
             toastIcon.className = 'fas fa-check';
-        } else {
+        } else if (type === 'error') {
             toastIcon.className = 'fas fa-exclamation-circle';
+        } else if (type === 'warning') {
+            toastIcon.className = 'fas fa-exclamation-triangle';
+        } else {
+            toastIcon.className = 'fas fa-info-circle';
         }
         
+        // Auto hide after 2 seconds
         setTimeout(() => {
             hideToast();
-        }, 3000);
+        }, 2000);
     }
     
     function hideToast() {
         document.getElementById('toast').classList.remove('show');
+    }
+    
+    function openChatFile(filename, originalFilename) {
+        // Kiểm tra quyền truy cập file trước khi mở
+        fetch(`/chat_file_access/${filename}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.access === 'owner' || data.access === 'shared') {
+                    // Có quyền truy cập, mở file
+                    const downloadUrl = `/download/${filename}`;
+                    const previewUrl = `/preview/${filename}`;
+                    
+                    // Thử mở preview trước, nếu không được thì download
+                    window.open(previewUrl, '_blank');
+                } else {
+                    showToast('Bạn không có quyền truy cập file này', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error checking file access:', error);
+                showToast('Lỗi kiểm tra quyền truy cập file', 'error');
+            });
     }
     
     // Delete Modal functions
@@ -1554,7 +1635,7 @@
         
         const formData = new FormData();
         formData.append('file', selectedFile);
-        formData.append('visibility', 'public');
+        formData.append('visibility', 'private');
         
         showToast('Đang upload file...', 'success');
         
@@ -1620,29 +1701,38 @@
             currentChatOnline = online;
             
             if (type === 'group') {
-                loadGroupChat(id, name);
+                loadGroupChat(id, name, avatar);
             } else {
                 loadPrivateChat(id, name);
             }
         });
     });
     
-    function loadGroupChat(roomid, roomname) {
+    function loadGroupChat(roomid, roomname, avatarUrl = null) {
         currentChatType = 'group';
         currentChatId = roomid;
         currentChatName = roomname;
+        
+        const avatarHtml = avatarUrl 
+            ? `<img src="${avatarUrl}" alt="${roomname}">`
+            : '<i class="fas fa-users"></i>';
         
         const chatArea = document.getElementById('chatArea');
         chatArea.innerHTML = `
             <div class="chat-header">
                 <div class="chat-header-info">
                     <div class="chat-avatar">
-                        <i class="fas fa-users"></i>
+                        ${avatarHtml}
                     </div>
                     <div class="chat-header-text">
                         <h5>${roomname}</h5>
                         <p>Nhóm chat</p>
                     </div>
+                </div>
+                <div class="chat-header-actions">
+                    <a href="/group_settings/${roomid}" class="action-button settings-btn" title="Cài đặt nhóm">
+                        <i class="fas fa-cog"></i>
+                    </a>
                 </div>
             </div>
             <div class="messages-container" id="messagesContainer"></div>
@@ -1689,6 +1779,11 @@
                         <h5>${username}</h5>
                         <p>${statusText}</p>
                     </div>
+                </div>
+                <div class="chat-header-actions">
+                    <a href="/private_chat_info/${userid}" class="action-button info-btn" title="Thông tin chat">
+                        <i class="fas fa-info-circle"></i>
+                    </a>
                 </div>
             </div>
             <div class="messages-container" id="messagesContainer"></div>
@@ -1787,7 +1882,7 @@
                 : msg.file_attachment;
             
             fileAttachmentHtml = `
-                <div class="file-attachment" onclick="window.open('${fileData.url}', '_blank')">
+                <div class="file-attachment" onclick="openChatFile('${fileData.filename}', '${fileData.original_filename}')">
                     <i class="fas fa-file file-attachment-icon"></i>
                     <div class="file-attachment-info">
                         <div class="file-attachment-name">${fileData.original_filename}</div>
@@ -1864,16 +1959,40 @@
     }
     
     function formatTime(timeStr) {
+        if (!timeStr) return '';
+        
         const date = new Date(timeStr);
         const now = new Date();
+        
+        // Kiểm tra nếu date không hợp lệ
+        if (isNaN(date.getTime())) {
+            console.error('Invalid date:', timeStr);
+            return timeStr;
+        }
+        
         const diff = now - date;
         
+        // Nếu vừa gửi (dưới 1 phút)
         if (diff < 60000) return 'Vừa xong';
-        if (diff < 3600000) return `${Math.floor(diff / 60000)} phút trước`;
+        
+        // Nếu trong vòng 1 giờ, hiển thị số phút
+        if (diff < 3600000) {
+            const minutes = Math.floor(diff / 60000);
+            return `${minutes} phút trước`;
+        }
+        
+        // Nếu cùng ngày, hiển thị giờ:phút
         if (date.toDateString() === now.toDateString()) {
             return date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
         }
-        return date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+        
+        // Nếu khác ngày, hiển thị ngày/tháng và giờ:phút
+        return date.toLocaleDateString('vi-VN', { 
+            day: '2-digit', 
+            month: '2-digit', 
+            hour: '2-digit', 
+            minute: '2-digit' 
+        });
     }
     
     function scrollToBottom() {

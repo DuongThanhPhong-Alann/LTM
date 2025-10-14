@@ -1,0 +1,5 @@
+cryptography
+pyodbc
+werkzeug
+requests
+pytz

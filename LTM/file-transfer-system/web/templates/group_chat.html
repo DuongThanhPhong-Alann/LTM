@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ room.roomname }} - Group Chat</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Inter', sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #0ea5e9 0%, #10b981 100%);
+            height: 100vh;
+            overflow: hidden;
+        }
+        
+        .chat-container {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            max-width: 1200px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.98);
+            backdrop-filter: blur(20px);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+        
+        .chat-header {
+            padding: 20px 30px;
+            background: linear-gradient(135deg, #0ea5e9 0%, #10b981 100%);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+        }
+        
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .group-avatar {
+            width: 55px;
+            height: 55px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.25);
+            backdrop-filter: blur(10px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+        }
+        
+        .header-info h2 {
+            margin: 0;
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+        
+        .header-info p {
+            margin: 3px 0 0 0;
+            opacity: 0.9;
+            font-size: 0.9rem;
+        }
+        
+        .back-btn {
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-decoration: none;
+        }
+        
+        .back-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.1);
+            color: white;
+        }
+        
+        .messages-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 30px;
+            background: linear-gradient(180deg, #f8f9fa 0%, #ffffff 100%);
+            position: relative;
+        }
+        
+        .messages-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80"><circle cx="40" cy="40" r="1" fill="%23dee2e6"/></svg>') repeat;
+            background-size: 20px 20px;
+            opacity: 0.3;
+            pointer-events: none;
+        }
+        
+        .message {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 12px;
+            animation: slideIn 0.3s ease-out;
+            position: relative;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(15px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .message.my-message {
+            flex-direction: row-reverse;
+        }
+        
+        .message-avatar {
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #0ea5e9 0%, #10b981 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 1rem;
+            flex-shrink: 0;
+            box-shadow: 0 4px 12pxrgba(14, 165, 233, 0.3);
+        }
+        
+        .message-content {
+            max-width: 60%;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .message.my-message .message-content {
+            align-items: flex-end;
+        }
+        
+        .message-bubble {
+            padding: 14px 18px;
+            border-radius: 20px;
+            word-wrap: break-word;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+            position: relative;
+            max-width: 100%;
+        }
+        
+        .message.other-message .message-bubble {
+            background: white;
+            color: #2d3748;
+            border-bottom-left-radius: 6px;
+        }
+        
+        .message.my-message .message-bubble {
+            background: linear-gradient(135deg, #0ea5e9 0%, #10b981 100%);
+            color: white;
+            border-bottom-right-radius: 6px;
+        }
+        
+        .message-info {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 6px;
+            padding: 0 4px;
+            font-size: 0.8rem;
+        }
+        
+        .message.my-message .message-info {
+            flex-direction: row-reverse;
+        }
+        
+        .message-username {
+            font-weight: 600;
+            color: #4a5568;
+        }
+        
+        .message.my-message .message-username {
+            color: #0ea5e9;
+        }
+        
+        .message-time {
+            color: #94a3b8;
+        }
+        
+        .input-area {
+            padding: 20px 30px;
+            background: white;
+            border-top: 1px solid #e2e8f0;
+            box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.05);
+        }
+        
+        .input-wrapper {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            position: relative;
+        }
+        
+        .message-input {
+            flex: 1;
+            padding: 16px 20px;
+            border: 2px solid #e2e8f0;
+            border-radius: 28px;
+            font-size: 1rem;
+            transition: all 0.3s;
+            background: #f8fafc;
+        }
+        
+        .message-input:focus {
+            outline: none;
+            border-color: #0ea5e9;
+            background: white;
+            box-shadow: 0 0 0 4pxrgba(14, 165, 233, 0.1);
+        }
+        
+        .send-btn {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            border: none;
+            background: linear-gradient(135deg, #0ea5e9 0%, #10b981 100%);
+            color: white;
+            font-size: 1.3rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 16pxrgba(14, 165, 233, 0.4);
+        }
+        
+        .send-btn:hover {
+            transform: scale(1.1) rotate(15deg);
+            box-shadow: 0 8px 24pxrgba(14, 165, 233, 0.5);
+        }
+        
+        .send-btn:active {
+            transform: scale(0.95);
+        }
+        
+        .error-message {
+            color: #ef4444;
+            font-size: 0.85rem;
+            margin-top: 8px;
+            padding: 0 8px;
+            display: none;
+        }
+        
+        .error-message.show {
+            display: block;
+            animation: shake 0.3s ease-in-out;
+        }
+        
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+        
+        ::-webkit-scrollbar {
+            width: 10px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: linear-gradient(135deg, #0ea5e9 0%, #10b981 100%);
+            border-radius: 10px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: linear-gradient(135deg, #10b981 0%, #0ea5e9 100%);
+        }
+        
+        .typing-indicator {
+            display: none;
+            padding: 10px 16px;
+            background: white;
+            border-radius: 20px;
+            width: fit-content;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        }
+        
+        .typing-indicator span {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #94a3b8;
+            margin: 0 2px;
+            animation: bounce 1.4s infinite;
+        }
+        
+        .typing-indicator span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+        
+        .typing-indicator span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+        
+        @keyframes bounce {
+            0%, 60%, 100% { transform: translateY(0); }
+            30% { transform: translateY(-8px); }
+        }
+        
+        @media (max-width: 768px) {
+            .chat-container {
+                border-radius: 0;
+            }
+            
+            .message-content {
+                max-width: 75%;
+            }
+            
+            .messages-container {
+                padding: 20px 15px;
+            }
+            
+            .input-area {
+                padding: 15px;
+            }
+        }
+        
+        /* Toast Notification */
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: white;
+            padding: 15px 20px;
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+            display: none;
+            align-items: center;
+            gap: 12px;
+            z-index: 3000;
+            animation: slideInRight 0.3s ease;
+            max-width: 350px;
+        }
+        
+        @keyframes slideInRight {
+            from {
+                opacity: 0;
+                transform: translateX(100px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+        
+        .toast.show {
+            display: flex;
+        }
+        
+        .toast.success {
+            border-left: 4px solid #28a745;
+            background: linear-gradient(135deg, #ffffff 0%, #f8fff9 100%);
+        }
+        
+        .toast.error {
+            border-left: 4px solid #dc3545;
+            background: linear-gradient(135deg, #ffffff 0%, #fff8f8 100%);
+        }
+        
+        .toast.warning {
+            border-left: 4px solid #ffc107;
+            background: linear-gradient(135deg, #ffffff 0%, #fffdf8 100%);
+        }
+        
+        .toast.info {
+            border-left: 4px solid #17a2b8;
+            background: linear-gradient(135deg, #ffffff 0%, #f8fcff 100%);
+        }
+        
+        .toast-icon {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        
+        .toast.success .toast-icon {
+            background: #d4edda;
+            color: #28a745;
+        }
+        
+        .toast.error .toast-icon {
+            background: #f8d7da;
+            color: #dc3545;
+        }
+        
+        .toast.warning .toast-icon {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        .toast.info .toast-icon {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+        
+        .toast-message {
+            flex: 1;
+            font-size: 0.95rem;
+            color: #212529;
+            font-weight: 500;
+        }
+        
+        .toast-close {
+            background: none;
+            border: none;
+            color: #6c757d;
+            cursor: pointer;
+            padding: 0;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        /* File Attachment Styles */
+        .file-attachment {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            margin-top: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 1px solid #e9ecef;
+        }
+        
+        .file-attachment:hover {
+            background: #e9ecef;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        
+        .file-attachment-icon {
+            color: #0ea5e9;
+            font-size: 1.2rem;
+        }
+        
+        .file-attachment-info {
+            flex: 1;
+        }
+        
+        .file-attachment-name {
+            font-weight: 600;
+            color: #212529;
+            font-size: 0.9rem;
+        }
+        
+        .file-attachment-size {
+            font-size: 0.8rem;
+            color: #6c757d;
+        }
+        
+        .file-attachment i.fa-download {
+            color: #0ea5e9;
+            font-size: 1rem;
+        }
+        
+        /* File button styles */
+        .file-btn {
+            background: none;
+            border: none;
+            color: #666;
+            font-size: 18px;
+            padding: 8px 12px;
+            cursor: pointer;
+            border-radius: 50%;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .file-btn:hover {
+            background: #f0f0f0;
+            color: #007bff;
+        }
+        
+        /* Header actions */
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .settings-btn {
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-decoration: none;
+            transition: all 0.3s ease;
+        }
+        
+        .settings-btn:hover {
+            background: rgba(255,255,255,0.3);
+            color: white;
+            transform: translateY(-2px);
+        }
+        
+        .group-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 50%;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            <div class="header-left">
+                <div class="group-avatar">
+                    {% if room.avatar_url %}
+                        <img src="{{ room.avatar_url }}" alt="{{ room.roomname }}">
+                    {% else %}
+                        <i class="fas fa-users"></i>
+                    {% endif %}
+                </div>
+                <div class="header-info">
+                    <h2>{{ room.roomname }}</h2>
+                    <p><i class="fas fa-circle" style="font-size: 0.5rem; color: #4ade80;"></i> Nhóm chat</p>
+                </div>
+            </div>
+            <div class="header-actions">
+                <a href="{{ url_for('group_settings', roomid=room.roomid) }}" class="settings-btn" title="Cài đặt nhóm">
+                    <i class="fas fa-cog"></i>
+                </a>
+                <a href="{{ url_for('chat') }}" class="back-btn">
+                    <i class="fas fa-arrow-left"></i>
+                </a>
+            </div>
+        </div>
+        
+        <div class="messages-container" id="messageContainer">
+            {% for message in messages %}
+            <div class="message {% if message.userid == my_id %}my-message{% else %}other-message{% endif %}">
+                <div class="message-avatar">
+                    {% if message.avatar_url %}
+                        <img src="{{ message.avatar_url }}" alt="{{ message.username }}">
+                    {% else %}
+                        {{ message.username[0].upper() if message.username else '?' }}
+                    {% endif %}
+                </div>
+                <div class="message-content">
+                    <div class="message-bubble">
+                        {{ message.content }}
+                {% if message.file_attachment %}
+                <div class="file-attachment" onclick="openChatFile('{{ message.file_attachment.filename }}', '{{ message.file_attachment.original_filename }}')">
+                    <i class="fas fa-file file-attachment-icon"></i>
+                    <div class="file-attachment-info">
+                        <div class="file-attachment-name">{{ message.file_attachment.original_filename }}</div>
+                        <div class="file-attachment-size">{{ message.file_attachment.size }}</div>
+                    </div>
+                    <i class="fas fa-download"></i>
+                </div>
+                {% endif %}
+                    </div>
+                    <div class="message-info">
+                        <span class="message-username">{{ message.username }}</span>
+                        <span class="message-time" data-time="{{ message.createdat }}"></span>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+            
+            <div class="typing-indicator" id="typingIndicator">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+        </div>
+        
+        <div class="input-area">
+            <form id="messageForm" method="POST" action="{{ url_for('send_group_message', roomid=room.roomid) }}">
+                <div class="input-wrapper">
+                    <input type="file" id="file-input" style="display: none;" accept="*/*">
+                    <button type="button" class="file-btn" onclick="document.getElementById('file-input').click()" title="Gửi file">
+                        <i class="fas fa-paperclip"></i>
+                    </button>
+                    <input type="text" 
+                           class="message-input" 
+                           id="messageInput" 
+                           name="content" 
+                           placeholder="Nhập tin nhắn..." 
+                           autocomplete="off"
+                           required>
+                    <button type="submit" class="send-btn">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </div>
+                <div class="error-message" id="errorMessage"></div>
+            </form>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const messageForm = document.getElementById('messageForm');
+        const messageInput = document.getElementById('messageInput');
+        const messageContainer = document.getElementById('messageContainer');
+        const errorMessage = document.getElementById('errorMessage');
+        let lastMessageId = '{{ messages[-1].messageid if messages else "0" }}';
+        const myId = {{ my_id }};
+        const roomId = {{ room.roomid }};
+        let loadedMessageIds = new Set();
+
+        // Load existing messages into set and format times
+        document.querySelectorAll('.message').forEach(msg => {
+            const msgId = msg.dataset.messageid;
+            if (msgId) loadedMessageIds.add(msgId);
+            
+            // Format time for existing messages
+            const timeElement = msg.querySelector('.message-time');
+            if (timeElement && timeElement.dataset.time) {
+                timeElement.textContent = formatDate(timeElement.dataset.time);
+            }
+        });
+
+        function formatDate(dateString) {
+            if (!dateString) return '';
+            
+            const date = new Date(dateString);
+            const now = new Date();
+            
+            // Kiểm tra nếu date không hợp lệ
+            if (isNaN(date.getTime())) {
+                console.error('Invalid date:', dateString);
+                return dateString;
+            }
+            
+            const diff = now - date;
+            
+            // Nếu vừa gửi (dưới 1 phút)
+            if (diff < 60000) return 'Vừa xong';
+            
+            // Nếu trong vòng 1 giờ, hiển thị số phút
+            if (diff < 3600000) {
+                const minutes = Math.floor(diff / 60000);
+                return `${minutes} phút trước`;
+            }
+            
+            // Nếu cùng ngày, hiển thị giờ:phút
+            if (date.toDateString() === now.toDateString()) {
+                return date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+            }
+            
+            // Nếu khác ngày, hiển thị ngày/tháng và giờ:phút
+            return date.toLocaleDateString('vi-VN', { 
+                day: '2-digit', 
+                month: '2-digit', 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            });
+        }
+
+        function appendMessage(message) {
+            const msgId = message.messageid || message.MessageID;
+            
+            // Don't add if already exists
+            if (loadedMessageIds.has(msgId.toString())) return;
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${message.userid === myId ? 'my-message' : 'other-message'}`;
+            messageDiv.dataset.messageid = msgId;
+            
+            const username = message.username || 'User';
+            const content = message.content || message.Content || '';
+            const time = message.createdat || message.CreatedAt;
+            const avatarUrl = message.avatar_url;
+            
+            const avatarHtml = avatarUrl 
+                ? `<img src="${avatarUrl}" alt="${username}">`
+                : username[0].toUpperCase();
+            
+            // Check for file attachment
+            let fileAttachmentHtml = '';
+            if (message.file_attachment) {
+                const fileData = typeof message.file_attachment === 'string' 
+                    ? JSON.parse(message.file_attachment) 
+                    : message.file_attachment;
+                
+                fileAttachmentHtml = `
+                    <div class="file-attachment" onclick="openChatFile('${fileData.filename}', '${fileData.original_filename}')">
+                        <i class="fas fa-file file-attachment-icon"></i>
+                        <div class="file-attachment-info">
+                            <div class="file-attachment-name">${fileData.original_filename}</div>
+                            <div class="file-attachment-size">${fileData.size}</div>
+                        </div>
+                        <i class="fas fa-download"></i>
+                    </div>
+                `;
+            }
+            
+            messageDiv.innerHTML = `
+                <div class="message-avatar">
+                    ${avatarHtml}
+                </div>
+                <div class="message-content">
+                    <div class="message-bubble">
+                        ${content}
+                        ${fileAttachmentHtml}
+                    </div>
+                    <div class="message-info">
+                        <span class="message-username">${username}</span>
+                        <span class="message-time">${formatDate(time)}</span>
+                    </div>
+                </div>
+            `;
+            
+            messageContainer.insertBefore(messageDiv, document.getElementById('typingIndicator'));
+            messageContainer.scrollTop = messageContainer.scrollHeight;
+            loadedMessageIds.add(msgId.toString());
+            lastMessageId = msgId;
+        }
+
+        // Submit message
+        messageForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            errorMessage.classList.remove('show');
+            
+            const content = messageInput.value.trim();
+            if (!content) {
+                errorMessage.textContent = 'Vui lòng nhập tin nhắn';
+                errorMessage.classList.add('show');
+                return;
+            }
+
+            try {
+                const formData = new FormData(messageForm);
+                const response = await fetch(messageForm.action, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const result = await response.json();
+
+                if (result.success) {
+                    messageInput.value = '';
+                    showToast('Tin nhắn đã được gửi thành công!', 'success');
+                    appendMessage(result.message);
+                } else {
+                    showToast('Lỗi: ' + (result.error || 'Có lỗi khi gửi tin nhắn'), 'error');
+                }
+            } catch (error) {
+                console.error('Error sending message:', error);
+                showToast('Không thể gửi tin nhắn. Vui lòng thử lại!', 'error');
+            }
+        });
+
+        // Poll for new messages
+        async function pollMessages() {
+            try {
+                const response = await fetch(`{{ url_for("get_group_messages", roomid=room.roomid) }}?after=${lastMessageId}`);
+                const data = await response.json();
+                
+                if (data.messages && data.messages.length > 0) {
+                    data.messages.forEach(message => {
+                        appendMessage(message);
+                    });
+                }
+            } catch (error) {
+                console.error('Error polling messages:', error);
+            }
+        }
+
+        // Function to update all message times
+        function updateAllMessageTimes() {
+            document.querySelectorAll('.message-time[data-time]').forEach(timeElement => {
+                if (timeElement.dataset.time) {
+                    timeElement.textContent = formatDate(timeElement.dataset.time);
+                }
+            });
+        }
+        
+        // Poll every 2 seconds
+        setInterval(pollMessages, 2000);
+        
+        // Update message times every 30 seconds
+        setInterval(updateAllMessageTimes, 30000);
+
+        // Initial scroll to bottom
+        messageContainer.scrollTop = messageContainer.scrollHeight;
+
+        // Enter to send
+        messageInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                messageForm.dispatchEvent(new Event('submit'));
+            }
+        });
+        
+        // Toast notification functions
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toast');
+            const toastMessage = toast.querySelector('.toast-message');
+            const toastIcon = toast.querySelector('.toast-icon i');
+            
+            toast.className = `toast show ${type}`;
+            toastMessage.textContent = message;
+            
+            if (type === 'success') {
+                toastIcon.className = 'fas fa-check';
+            } else if (type === 'error') {
+                toastIcon.className = 'fas fa-exclamation-circle';
+            } else if (type === 'warning') {
+                toastIcon.className = 'fas fa-exclamation-triangle';
+            } else {
+                toastIcon.className = 'fas fa-info-circle';
+            }
+            
+            // Auto hide after 2 seconds
+            setTimeout(() => {
+                hideToast();
+            }, 2000);
+        }
+        
+        function hideToast() {
+            document.getElementById('toast').classList.remove('show');
+        }
+        
+        function openChatFile(filename, originalFilename) {
+            // Kiểm tra quyền truy cập file trước khi mở
+            fetch(`/chat_file_access/${filename}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.access === 'owner' || data.access === 'shared') {
+                        // Có quyền truy cập, mở file
+                        const previewUrl = `/preview/${filename}`;
+                        window.open(previewUrl, '_blank');
+                    } else {
+                        showToast('Bạn không có quyền truy cập file này', 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error checking file access:', error);
+                    showToast('Lỗi kiểm tra quyền truy cập file', 'error');
+                });
+        }
+        
+        // File upload handling
+        document.getElementById('file-input').addEventListener('change', function(e) {
+            if (e.target.files.length > 0) {
+                uploadFile(e.target.files[0]);
+            }
+        });
+        
+        function uploadFile(file) {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('visibility', 'private');
+            
+            showToast('Đang upload file...', 'info');
+            
+            fetch('/upload_chat_file', {
+                method: 'POST',
+                body: formData
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success && data.file) {
+                    // File uploaded, now share it
+                    return fetch('/share_file_to_chat', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            filename: data.file.filename,
+                            chat_type: 'group',
+                            chat_id: {{ room.roomid }}
+                        })
+                    });
+                } else {
+                    throw new Error(data.error || 'Upload failed');
+                }
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    showToast('Đã upload và gửi file thành công', 'success');
+                    location.reload(); // Reload page to show new message
+                } else {
+                    showToast(data.error || 'Lỗi khi gửi file', 'error');
+                }
+            })
+            .catch(err => {
+                console.error('Error uploading file:', err);
+                showToast(err.message || 'Có lỗi xảy ra', 'error');
+            });
+        }
+    </script>
+    
+    <!-- Toast Notification -->
+    <div class="toast" id="toast">
+        <div class="toast-icon">
+            <i class="fas fa-check"></i>
+        </div>
+        <div class="toast-message"></div>
+        <button class="toast-close" onclick="hideToast()">
+            <i class="fas fa-times"></i>
+        </button>
+    </div>
+</body>
+</html>

@@ -1757,7 +1757,8 @@
     
     function loadPrivateChat(userid, username) {
         currentChatType = 'private';
-        currentChatId = userid;
+        // Đảm bảo userid là integer
+        currentChatId = parseInt(userid);
         currentChatName = username;
         
         const avatarHtml = currentChatAvatar 

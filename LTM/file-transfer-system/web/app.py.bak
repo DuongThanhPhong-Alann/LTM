@@ -99,30 +99,6 @@ def retry_supabase_operation(operation, max_retries=3):
             print(f"Retry attempt {attempt + 1} after {wait_time}s: {str(e)}")
             time.sleep(wait_time)
 
-
-def execute_with_retries(operation, max_retries=5, base_delay=0.2):
-    """Retry wrapper that specifically handles transient WinError 10035 and similar socket issues."""
-    import time as _time
-    last_exc = None
-    for attempt in range(1, max_retries + 1):
-        try:
-            return operation()
-        except Exception as e:
-            last_exc = e
-            err_str = str(e)
-            # Check for Windows non-blocking socket transient error
-            if '10035' in err_str or 'non-blocking socket' in err_str.lower() or isinstance(e, OSError):
-                wait = base_delay * (2 ** (attempt - 1))
-                print(f"[RETRY] Transient socket error detected (attempt {attempt}/{max_retries}): {err_str}. Waiting {wait}s and retrying...")
-                _time.sleep(wait)
-                continue
-            # For other exceptions, re-raise immediately on last attempt or rethrow
-            print(f"[ERROR] Non-transient error in execute_with_retries: {err_str}")
-            raise
-    # After retries, return a MockResult similar to retry_supabase_operation
-    print(f"[ERROR] execute_with_retries exhausted retries. Last error: {last_exc}")
-    return type('MockResult', (), {'data': []})()
-
 # Register custom MIME types for uncommon file extensions
 mimetypes.add_type('application/octet-stream', '.docthif')
 mimetypes.add_type('application/octet-stream', '.custom')
@@ -1251,7 +1227,6 @@ def private_chat(userid):
                 msg['username'] = sender_info.get('username', 'Unknown')
                 msg['avatar_url'] = sender_info.get('avatar_url')
                 messages.append(msg)
-    print(f"[DEBUG] Rendering private_chat: chat_user={chat_user}, userid={userid}, my_id={my_id}")
     return render_template('private_chat.html', chat_user=chat_user, messages=messages, userid=userid, my_id=my_id)
 
 @app.route('/private_chat/messages/<int:userid>')
@@ -2004,97 +1979,58 @@ def private_chat_info(userid):
         return redirect(url_for('login'))
     
     try:
-        # Defensive logging
-        print(f"[DEBUG] Enter private_chat_info with raw userid={userid} (type={type(userid)})")
-
-        # Ensure userid is integer
-        try:
-            userid = int(userid)
-        except Exception as conv_err:
-            msg = f"Invalid userid value: {userid} ({conv_err})"
-            print(f"[ERROR] {msg}")
-            # Return visible error so developer can see it in browser
-            return Response(f"<h3>Invalid userid</h3><pre>{msg}</pre>", mimetype='text/html', status=400)
-
-        # Lấy thông tin người dùng hiện tại (with retry)
-        def fetch_current_user():
-            return supabase_client.table('users').select('userid').eq('username', session['user']).execute()
-
-        current_user_res = execute_with_retries(fetch_current_user)
-        if not current_user_res or not getattr(current_user_res, 'data', None):
-            msg = 'Không tìm thấy thông tin người dùng (current user)'
-            print(f"[ERROR] {msg}")
-            return Response(f"<h3>User not found</h3><pre>{msg}</pre>", mimetype='text/html', status=404)
-
+        # Ensure userid is integer and add debug logging
+        print(f"[DEBUG] Raw userid: {userid}, type: {type(userid)}")
+        userid = int(userid) if not isinstance(userid, int) else userid
+        print(f"[DEBUG] Converted userid: {userid}, type: {type(userid)}")
+        
+        # Add debug information for session and user lookup
+        print(f"[DEBUG] Current user: {session['user']}")
+        print(f"[DEBUG] Looking up current user ID...")
+        
+        # Lấy thông tin người dùng hiện tại
+        current_user_res = supabase_client.table('users').select('userid').eq('username', session['user']).execute()
+        if not current_user_res.data:
+            flash('Không tìm thấy thông tin người dùng', 'error')
+            return redirect(url_for('chat'))
+        
         current_userid = current_user_res.data[0]['userid']
-
+        
         # Lấy thông tin người chat
-        # Fetch chat user (with retry)
-        def fetch_chat_user():
-            return supabase_client.table('users').select('*').eq('userid', userid).execute()
-
-        chat_user_res = execute_with_retries(fetch_chat_user)
-        if not chat_user_res or not getattr(chat_user_res, 'data', None):
-            msg = f'Người dùng không tồn tại: userid={userid}'
-            print(f"[ERROR] {msg}")
-            return Response(f"<h3>User not found</h3><pre>{msg}</pre>", mimetype='text/html', status=404)
-
+        chat_user_res = supabase_client.table('users').select('*').eq('userid', userid).execute()
+        if not chat_user_res.data:
+            flash('Người dùng không tồn tại', 'error')
+            return redirect(url_for('chat'))
+        
         chat_user = chat_user_res.data[0]
-
-        # Normalize last_seen to a datetime object if it's a string so template can call strftime()
-        try:
-            last_seen = chat_user.get('last_seen')
-            if last_seen and isinstance(last_seen, str):
-                # Handle ISO format possibly ending with Z
-                try:
-                    chat_user['last_seen'] = datetime.fromisoformat(last_seen.replace('Z', '+00:00'))
-                except Exception:
-                    # fallback: try parsing common formats
-                    try:
-                        chat_user['last_seen'] = datetime.strptime(last_seen, '%Y-%m-%d %H:%M:%S')
-                    except Exception:
-                        # leave as string if parsing fails
-                        pass
-        except Exception as e:
-            print(f"[WARN] Could not normalize chat_user.last_seen: {e}")
-
-        # Lấy danh sách file đã gửi trong cuộc trò chuyện (defensive)
+        
+        # Lấy danh sách file đã gửi trong cuộc trò chuyện
+        files_res = supabase_client.table('privatemessages').select('file_attachment').eq('senderid', current_userid).eq('receiverid', userid).not_.is_('file_attachment', 'null').execute()
+        
         files_sent = []
-        try:
-            def fetch_files_sent():
-                return supabase_client.table('privatemessages').select('file_attachment').eq('senderid', current_userid).eq('receiverid', userid).not_.is_('file_attachment', 'null').execute()
-            files_res = execute_with_retries(fetch_files_sent)
-            if files_res and getattr(files_res, 'data', None):
-                for msg in files_res.data:
-                    if msg and msg.get('file_attachment'):
-                        files_sent.append(msg['file_attachment'])
-        except Exception as e:
-            print(f"[WARN] Could not fetch files_sent after retries: {e}")
-
+        for msg in files_res.data:
+            if msg.get('file_attachment'):
+                files_sent.append(msg['file_attachment'])
+        
         # Lấy file nhận được
+        files_received_res = supabase_client.table('privatemessages').select('file_attachment').eq('senderid', userid).eq('receiverid', current_userid).not_.is_('file_attachment', 'null').execute()
+        
         files_received = []
-        try:
-            def fetch_files_received():
-                return supabase_client.table('privatemessages').select('file_attachment').eq('senderid', userid).eq('receiverid', current_userid).not_.is_('file_attachment', 'null').execute()
-            files_received_res = execute_with_retries(fetch_files_received)
-            if files_received_res and getattr(files_received_res, 'data', None):
-                for msg in files_received_res.data:
-                    if msg and msg.get('file_attachment'):
-                        files_received.append(msg['file_attachment'])
-        except Exception as e:
-            print(f"[WARN] Could not fetch files_received after retries: {e}")
-
-        # Render
+        for msg in files_received_res.data:
+            if msg.get('file_attachment'):
+                files_received.append(msg['file_attachment'])
+        
+        # Lấy nickname nếu có (có thể lưu trong bảng riêng hoặc metadata)
+        # Tạm thời để trống, sẽ implement sau
+        
         return render_template('private_chat_info.html', 
                              chat_user=chat_user, 
                              files_sent=files_sent, 
                              files_received=files_received)
+    
     except Exception as e:
-        # Final catch: return error page with debug info rather than silent redirect
-        print(f"[EXCEPTION] private_chat_info failed: {e}")
-        import traceback
-        tb = traceback.format_exc()
-        return Response(f"<h3>Exception in private_chat_info</h3><pre>{tb}</pre>", mimetype='text/html', status=500)
+        flash(f'Lỗi: {str(e)}', 'error')
+        return redirect(url_for('chat'))
 
 @app.route('/set_nickname', methods=['POST'])
 def set_nickname():
@@ -2365,83 +2301,31 @@ def verify_registration():
                 'p_email': email,
                 'p_code': otp_code
             }).execute()
-            # Debug log for RPC response
-            print(f"[DEBUG] verify_registration rpc result: {getattr(result, 'data', None)}")
-
-            # Interpret RPC result robustly
+            
             if result.data and len(result.data) > 0:
                 verification = result.data[0]
-                print(f"[DEBUG] verification payload: {verification}")
-
-                raw_success = verification.get('success')
-                success_flag = False
-                try:
-                    if isinstance(raw_success, bool):
-                        success_flag = raw_success
-                    elif isinstance(raw_success, int):
-                        success_flag = (raw_success != 0)
-                    elif raw_success is None:
-                        success_flag = False
-                    else:
-                        success_flag = str(raw_success).lower() in ('1', 'true', 't', 'yes', 'y')
-                except Exception:
-                    success_flag = bool(raw_success)
-
-                if success_flag:
+                
+                if verification['success']:
                     # GỬI EMAIL THÔNG BÁO THÀNH CÔNG
                     try:
                         success, message = send_registration_success_email(email, username)
                         if not success:
+                            # Log lỗi nhưng không block quá trình đăng ký
                             print(f"Warning: Failed to send success email: {message}")
                     except Exception as e:
+                        # Log lỗi nhưng không block quá trình đăng ký
                         print(f"Warning: Exception when sending success email: {str(e)}")
-
-                    # Clear session and pending registration
-                    try:
-                        supabase_client.table('pending_registrations').delete().eq('email', email).execute()
-                    except Exception:
-                        pass
-
+                    
+                    # Clear session
                     session.pop('pending_email', None)
                     session.pop('pending_username', None)
-
+                    
                     flash('Đăng ký thành công! Bạn có thể đăng nhập ngay. Một email xác nhận đã được gửi đến hộp thư của bạn.', 'success')
                     return redirect(url_for('login'))
                 else:
-                    # RPC said verification failed; double-check DB — sometimes the DB function may have side-effects
-                    try:
-                        user_check = supabase_client.table('users').select('*').eq('email', email).execute()
-                        if user_check.data:
-                            # The account exists in DB — consider confirmation successful
-                            try:
-                                supabase_client.table('pending_registrations').delete().eq('email', email).execute()
-                            except Exception:
-                                pass
-                            session.pop('pending_email', None)
-                            session.pop('pending_username', None)
-                            flash('Đăng ký thành công! Bạn có thể đăng nhập ngay. (Được xác nhận trong hệ thống)', 'success')
-                            return redirect(url_for('login'))
-                    except Exception as e:
-                        print(f"[WARN] Error checking users table after RPC failure: {e}")
-
-                    flash(verification.get('message', 'Xác thực thất bại'), 'error')
+                    flash(verification['message'], 'error')
                     return redirect(url_for('verify_registration'))
             else:
-                # No RPC data returned — check if the user was created/activated anyway
-                try:
-                    user_check = supabase_client.table('users').select('*').eq('email', email).execute()
-                    if user_check.data:
-                        try:
-                            supabase_client.table('pending_registrations').delete().eq('email', email).execute()
-                        except Exception:
-                            pass
-                        session.pop('pending_email', None)
-                        session.pop('pending_username', None)
-                        flash('Đăng ký thành công! Bạn có thể đăng nhập ngay. (Được xác nhận trong hệ thống)', 'success')
-                        return redirect(url_for('login'))
-                except Exception as e:
-                    print(f"[WARN] Error checking users table when RPC returned no data: {e}")
-
                 flash('Có lỗi xảy ra khi xác thực!', 'error')
                 return redirect(url_for('verify_registration'))
                 

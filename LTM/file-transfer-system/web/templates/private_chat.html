@@ -572,7 +572,7 @@
             </div>
         </div>
         <div class="chat-actions">
-            <a href="{{ url_for('private_chat_info', userid=userid) }}" class="action-btn info-btn" title="Thông tin">
+            <a href="{{ url_for('private_chat_info', userid=userid|int) }}" class="action-btn info-btn" title="Thông tin">
                 <i class="fas fa-info-circle"></i>
             </a>
             <a href="{{ url_for('chat') }}" class="action-btn back-btn" title="Quay lại">

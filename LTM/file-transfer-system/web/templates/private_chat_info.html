@@ -328,10 +328,10 @@
                         <span class="status-indicator" style="background: #adb5bd;"></span>
                         <span>
                             {% if chat_user.last_seen %}
-                                Hoạt động lần cuối: {{ chat_user.last_seen.strftime('%d/%m/%Y %H:%M') }}
-                            {% else %}
-                                Chưa hoạt động
-                            {% endif %}
+                                    Hoạt động lần cuối: {% if chat_user.last_seen.strftime is defined %}{{ chat_user.last_seen.strftime('%d/%m/%Y %H:%M') }}{% else %}{{ chat_user.last_seen }}{% endif %}
+                                {% else %}
+                                    Chưa hoạt động
+                                {% endif %}
                         </span>
                     {% endif %}
                 </div>

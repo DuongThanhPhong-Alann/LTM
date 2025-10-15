@@ -9,6 +9,22 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
-    {% block content %}{% endblock %}
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="container mt-3">
+                    {% for category, message in messages %}
+                        {% set cls = 'info' %}
+                        {% if category == 'success' %}
+                            {% set cls = 'success' %}
+                        {% elif category == 'error' %}
+                            {% set cls = 'danger' %}
+                        {% endif %}
+                        <div class="alert alert-{{ cls }}" role="alert">{{ message }}</div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
 </body>
 </html>

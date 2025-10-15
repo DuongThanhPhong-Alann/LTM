@@ -444,12 +444,17 @@
                         <p class="subtitle">Đăng nhập để tiếp tục trải nghiệm</p>
                     </div>
 
-                    <!-- Flash messages would go here in Flask template -->
-                    <div class="alert alert-success alert-dismissible fade show" role="alert" style="display: none;">
-                        <i class="fas fa-check-circle"></i>
-                        Đăng ký thành công! Vui lòng đăng nhập.
-                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                    </div>
+                    {% with messages = get_flashed_messages(with_categories=true) %}
+                        {% if messages %}
+                            {% for category, message in messages %}
+                                <div class="alert alert-{{ 'danger' if category == 'error' else 'success' }} alert-dismissible fade show" role="alert">
+                                    <i class="fas fa-{{ 'exclamation-circle' if category == 'error' else 'check-circle' }} me-2"></i>
+                                    {{ message }}
+                                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                                </div>
+                            {% endfor %}
+                        {% endif %}
+                    {% endwith %}
 
                     <form method="post" id="loginForm">
                         <div class="input-wrapper">

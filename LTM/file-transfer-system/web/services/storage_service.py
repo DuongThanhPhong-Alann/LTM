@@ -2,6 +2,7 @@ import os
 from datetime import datetime
 from cryptography.fernet import Fernet
 import pytz
+import unicodedata
 
 
 class StorageService:
@@ -14,10 +15,14 @@ class StorageService:
         name = name.replace(' ', '_')
         # Preserve more characters but still sanitize dangerous ones
         # Allow alphanumeric, underscore, dash, dot, and parentheses
+        # Normalize Unicode characters to ASCII (strip accents) to avoid storage key errors
+        name = unicodedata.normalize('NFKD', name)
+        name = name.encode('ascii', 'ignore').decode('ascii')
         name = ''.join(c for c in name if c.isalnum() or c in '_.-()')
         timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
         # Preserve original extension case and add timestamp
-        return f"{name}_{timestamp}{ext}"
+        safe_ext = ext if ext else ''
+        return f"{name}_{timestamp}{safe_ext}"
 
     def encrypt_file(self, file_data: bytes):
         key = Fernet.generate_key()

@@ -843,6 +843,21 @@
     
     <!-- Toast Container -->
     <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Delete Modal (shows while bulk-deleting) -->
+    <div class="modal fade" id="deleteModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content" style="border-radius:12px;">
+                <div class="modal-body text-center py-4">
+                    <div class="spinner-border text-danger" role="status" style="width:3rem;height:3rem;">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <h5 class="mt-3" id="deleteModalText">Đang xóa 1 file...</h5>
+                    <p class="text-muted">Vui lòng chờ trong khi hệ thống xóa file...</p>
+                </div>
+            </div>
+        </div>
+    </div>
     
     <div class="content-wrapper">
         <nav class="navbar navbar-expand-lg">
@@ -900,7 +915,7 @@
                     <div class="row justify-content-center">
                         <div class="col-md-8">
                             <div class="input-group mb-3">
-                                <input type="file" class="form-control" id="file" name="file">
+                                <input type="file" class="form-control" id="file" name="file" multiple>
                                 <button type="submit" class="btn btn-primary">
                                     <i class="fas fa-upload me-1"></i> Tải lên
                                 </button>
@@ -986,16 +1001,25 @@
                             <table class="table table-hover mb-0">
                                 <thead>
                                     <tr>
+                                        <th style="width:40px;"><input type="checkbox" id="selectAll"></th>
                                         <th>Tên file</th>
                                         <th>Kích thước</th>
                                         <th>Người tải lên</th>
                                         <th>Thời gian</th>
-                                        <th style="width: 280px;">Thao tác</th>
+                                        <th style="width: 340px;">Thao tác</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {% for file in files %}
                                         <tr>
+                                            <td class="align-middle text-center">
+                                                {% if role == 'admin' or (file.metadata and file.metadata.get('uploaded_by') == username) %}
+                                                    <input type="checkbox" class="file-checkbox" value="{{ file.name }}">
+                                                {% else %}
+                                                    <!-- not selectable by non-owner -->
+                                                    <input type="checkbox" disabled>
+                                                {% endif %}
+                                            </td>
                                             <td>
                                                 <div class="d-flex align-items-center">
                                                     <span class="file-icon">
@@ -1049,6 +1073,9 @@
                                     {% endfor %}
                                 </tbody>
                             </table>
+                        </div>
+                        <div class="p-3 d-flex justify-content-end gap-2">
+                            <button id="deleteSelectedBtn" class="btn btn-danger btn-sm">Xóa đã chọn</button>
                         </div>
                     {% else %}
                         <div class="empty-state">
@@ -1118,14 +1145,16 @@
                 return;
             }
 
-            const file = fileInput.files[0];
             const visibility = document.querySelector('input[name="visibility"]:checked').value;
-            
-            // Show progress bar
-            showProgress();
-            
+
+            // Show progress bar and indicate number of files
+            showProgress(fileInput.files.length);
+
             const formData = new FormData();
-            formData.append('file', file);
+            // Append all selected files (server accepts multiple files via request.files.getlist('file'))
+            for (let i = 0; i < fileInput.files.length; i++) {
+                formData.append('file', fileInput.files[i]);
+            }
             formData.append('visibility', visibility);
 
             try {
@@ -1213,14 +1242,18 @@
         });
 
         // Progress Bar Functions
-        function showProgress() {
+        function showProgress(totalFiles) {
             const progressContainer = document.getElementById('progressContainer');
             const progressBar = document.getElementById('progressBar');
             const progressText = document.getElementById('progressText');
             
             progressContainer.style.display = 'block';
             progressBar.style.width = '0%';
-            progressText.textContent = 'Đang tải lên... 0%';
+            if (totalFiles && totalFiles > 1) {
+                progressText.textContent = `Đang tải lên ${totalFiles} file... 0%`;
+            } else {
+                progressText.textContent = 'Đang tải lên... 0%';
+            }
             
             // Simulate progress
             let progress = 0;
@@ -1228,7 +1261,11 @@
                 progress += Math.random() * 15;
                 if (progress > 90) progress = 90;
                 progressBar.style.width = progress + '%';
-                progressText.textContent = `Đang tải lên... ${Math.round(progress)}%`;
+                if (totalFiles && totalFiles > 1) {
+                    progressText.textContent = `Đang tải lên ${totalFiles} file... ${Math.round(progress)}%`;
+                } else {
+                    progressText.textContent = `Đang tải lên... ${Math.round(progress)}%`;
+                }
                 
                 if (progress >= 90) {
                     clearInterval(interval);
@@ -1415,6 +1452,65 @@
                     downloadWithProgress(filename);
                 });
             });
+            // Select all checkbox
+            const selectAll = document.getElementById('selectAll');
+            if (selectAll) {
+                selectAll.addEventListener('change', function() {
+                    const checks = document.querySelectorAll('.file-checkbox');
+                    checks.forEach(c => { if (!c.disabled) c.checked = selectAll.checked; });
+                });
+            }
+
+            // Delete selected button
+            const deleteBtn = document.getElementById('deleteSelectedBtn');
+            if (deleteBtn) {
+                deleteBtn.addEventListener('click', async function() {
+                    const checks = Array.from(document.querySelectorAll('.file-checkbox')).filter(c => c.checked && !c.disabled);
+                    if (!checks.length) {
+                        showToast('Vui lòng chọn ít nhất 1 file để xóa', 'warning');
+                        return;
+                    }
+                    if (!confirm(`Bạn có chắc muốn xóa ${checks.length} file đã chọn?`)) return;
+
+                    const filenames = checks.map(c => c.value);
+
+                    try {
+                        // Show delete modal spinner and update text
+                        const deleteModalEl = document.getElementById('deleteModal');
+                        const deleteModalText = document.getElementById('deleteModalText');
+                        deleteModalText.textContent = `Đang xóa ${filenames.length} file...`;
+                        const deleteModal = new bootstrap.Modal(deleteModalEl, { backdrop: 'static', keyboard: false });
+                        deleteModal.show();
+
+                        const resp = await fetch('/delete_files', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ filenames })
+                        });
+
+                        if (resp.redirected) {
+                            // follow server redirect
+                            deleteModal.hide();
+                            window.location = resp.url;
+                            return;
+                        }
+
+                        if (resp.ok) {
+                            deleteModal.hide();
+                            showToast('Đã xóa thành công', 'success');
+                            setTimeout(() => location.reload(), 600);
+                        } else {
+                            deleteModal.hide();
+                            const err = await resp.text();
+                            showToast('Có lỗi khi xóa: ' + err, 'error');
+                        }
+                    } catch (e) {
+                        console.error(e);
+                        try { deleteModal.hide(); } catch (_) {}
+                        showToast('Lỗi kết nối khi gửi yêu cầu xóa', 'error');
+                    }
+                });
+            }
         });
     </script>
 </body>

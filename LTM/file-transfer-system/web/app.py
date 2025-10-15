@@ -69,6 +69,9 @@ def convert_docx_to_doc(docx_path):
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key_here'
+# Ensure session cookie settings are explicit for local development
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_SECURE'] = False
 
 # Helper function to get Vietnam time
 def get_vietnam_time():
@@ -170,6 +173,11 @@ def login():
             session['user'] = username
             session['role'] = user.get('role', 'user')
             flash('Đăng nhập thành công!', 'success')
+            # Debug info to help troubleshoot session persistence issues
+            try:
+                print(f"[DEBUG] login success: username={username}, session_keys={list(session.keys())}")
+            except Exception as _:
+                print("[DEBUG] login success (could not read session keys)")
             
             # Redirect về trang gốc nếu có, không thì về index
             next_page = request.args.get('next')
@@ -224,108 +232,93 @@ def upload():
     if 'user' not in session:
         return redirect(url_for('login'))
         
-    if 'file' not in request.files:
+    files = request.files.getlist('file')
+    if not files:
         flash('Không có file được chọn!', 'error')
-        return redirect(url_for('index'))
-        
-    file = request.files['file']
-    if file.filename == '':
-        flash('Không có file được chọn!', 'error')
-        return redirect(url_for('index'))
+        return redirect_back('index')
 
-    file_content = file.read()
-    if len(file_content) == 0:
-        flash('File rỗng!', 'error')
-        return redirect(url_for('index'))
-    
-    # Get file size
-    file_size_bytes = len(file_content)
-    if file_size_bytes < 1024:
-        file_size_display = f"{file_size_bytes} bytes"
-    elif file_size_bytes < 1024 * 1024:
-        file_size_display = f"{file_size_bytes / 1024:.2f} KB"
-    else:
-        file_size_display = f"{file_size_bytes / (1024 * 1024):.2f} MB"
-    
-    # Improved MIME type detection
-    content_type = file.content_type
-    if not content_type or content_type == 'application/octet-stream':
-        # Try to detect MIME type from file extension
-        guessed_type, _ = mimetypes.guess_type(file.filename)
-        if guessed_type:
-            content_type = guessed_type
+    upload_results = []
+    for file in files:
+        if not file or file.filename == '':
+            upload_results.append((None, False, 'No filename'))
+            continue
+
+        file_content = file.read()
+        if len(file_content) == 0:
+            upload_results.append((file.filename, False, 'Empty file'))
+            continue
+
+        # Get file size
+        file_size_bytes = len(file_content)
+        if file_size_bytes < 1024:
+            file_size_display = f"{file_size_bytes} bytes"
+        elif file_size_bytes < 1024 * 1024:
+            file_size_display = f"{file_size_bytes / 1024:.2f} KB"
         else:
-            # For unknown extensions, use generic binary type
-            content_type = 'application/octet-stream'
-    
-    visibility = request.form.get('visibility', 'private')
-    is_public = visibility == 'public'
-        
-    success = storage_service.upload_file(
-        file_content,
-        file.filename,
-        content_type,
-        session['user'],
-        is_public
-    )
-    
-    if isinstance(success, dict):
-        if success.get('success'):
-            flash(f'File {file.filename} đã được mã hóa và tải lên thành công!', 'success')
-            
-            # GỬI EMAIL THÔNG BÁO UPLOAD
-            try:
-                # Lấy email của user
-                user_res = supabase_client.table('users').select('email').eq('username', session['user']).execute()
-                if user_res.data:
-                    user_email = user_res.data[0].get('email')
-                    
-                    success_email, message = send_file_uploaded_email(
-                        email=user_email,
-                        username=session['user'],
-                        filename=file.filename,
-                        filesize=file_size_display,
-                        filetype=content_type,
-                        visibility=visibility
-                    )
-                    
-                    if success_email:
-                        print(f"✅ Upload notification sent to {user_email}")
-                    else:
-                        print(f"⚠️ Failed to send upload notification: {message}")
-            except Exception as e:
-                print(f"❌ Upload email error: {str(e)}")
-        else:
-            flash(success.get('error', 'Lỗi khi tải lên file!'), 'error')
-    else:
-        if success:
-            flash(f'File {file.filename} đã được mã hóa và tải lên thành công!', 'success')
-            
-            # GỬI EMAIL THÔNG BÁO UPLOAD (cho trường hợp success là boolean)
-            try:
-                user_res = supabase_client.table('users').select('email').eq('username', session['user']).execute()
-                if user_res.data:
-                    user_email = user_res.data[0].get('email')
-                    
-                    success_email, message = send_file_uploaded_email(
-                        email=user_email,
-                        username=session['user'],
-                        filename=file.filename,
-                        filesize=file_size_display,
-                        filetype=content_type,
-                        visibility=visibility
-                    )
-                    
-                    if success_email:
-                        print(f"✅ Upload notification sent to {user_email}")
-                    else:
-                        print(f"⚠️ Failed to send upload notification: {message}")
-            except Exception as e:
-                print(f"❌ Upload email error: {str(e)}")
-        else:
-            flash('Lỗi khi tải lên file!', 'error')
-        
-    return redirect(url_for('index'))
+            file_size_display = f"{file_size_bytes / (1024 * 1024):.2f} MB"
+
+        # Improved MIME type detection
+        content_type = file.content_type
+        if not content_type or content_type == 'application/octet-stream':
+            # Try to detect MIME type from file extension
+            guessed_type, _ = mimetypes.guess_type(file.filename)
+            if guessed_type:
+                content_type = guessed_type
+            else:
+                # For unknown extensions, use generic binary type
+                content_type = 'application/octet-stream'
+
+        visibility = request.form.get('visibility', 'private')
+        is_public = visibility == 'public'
+
+        success = storage_service.upload_file(
+            file_content,
+            file.filename,
+            content_type,
+            session['user'],
+            is_public
+        )
+
+        # Determine success for this file and optionally send email
+        try:
+            if isinstance(success, dict):
+                ok = bool(success.get('success'))
+            else:
+                ok = bool(success)
+
+            if ok:
+                upload_results.append((file.filename, True, 'Uploaded'))
+                try:
+                    user_res = supabase_client.table('users').select('email').eq('username', session['user']).execute()
+                    if user_res.data:
+                        user_email = user_res.data[0].get('email')
+                        send_file_uploaded_email(
+                            email=user_email,
+                            username=session['user'],
+                            filename=file.filename,
+                            filesize=file_size_display,
+                            filetype=content_type,
+                            visibility=visibility
+                        )
+                except Exception as e:
+                    print(f"❌ Upload email error: {str(e)}")
+            else:
+                reason = success.get('error') if isinstance(success, dict) else 'Upload failed'
+                upload_results.append((file.filename, False, reason))
+        except Exception as e:
+            upload_results.append((file.filename, False, str(e)))
+
+    # Summarize upload results
+    success_files = [name for name, ok, _ in upload_results if ok]
+    failed = [(name, msg) for name, ok, msg in upload_results if not ok]
+
+    if success_files:
+        flash(f"Đã tải lên thành công: {', '.join(success_files)}", 'success')
+    if failed:
+        msgs = '; '.join([f"{n}: {m}" for n, m in failed])
+        flash(f"Một số file không tải lên được: {msgs}", 'error')
+
+    return redirect_back('index')
 
 @app.route('/download/<filename>')
 def download(filename):
@@ -430,7 +423,7 @@ def delete(filename):
     
     if not is_admin and not is_owner:
         flash('Bạn không có quyền xóa file này!', 'error')
-        return redirect(url_for('index'))
+        return redirect_back('index')
     
     # Get file owner's email if we have the username
     if file_owner_username:
@@ -463,7 +456,95 @@ def delete(filename):
     else:
         flash('Lỗi khi xóa file!', 'error')
         
-    return redirect(url_for('index'))
+    return redirect_back('index')
+
+
+@app.route('/delete_files', methods=['POST'])
+def delete_files():
+    """Bulk delete multiple files. Expects form field 'filenames' as repeated values or JSON body with {filenames: []}."""
+    if 'user' not in session:
+        return redirect(url_for('login'))
+
+    # Accept JSON or form
+    data = None
+    try:
+        data = request.get_json(silent=True)
+    except Exception:
+        data = None
+
+    if data and isinstance(data, dict):
+        filenames = data.get('filenames') or []
+    else:
+        filenames = request.form.getlist('filenames') or []
+
+    if not filenames:
+        flash('Không có file nào được chọn để xóa!', 'error')
+        return redirect_back('index')
+
+    success_list = []
+    failed_list = []
+
+    # Pre-fetch all files for ownership checks
+    try:
+        all_files = storage_service.list_files(current_user=session['user'], public_only=False) or []
+    except Exception as e:
+        all_files = []
+
+    for filename in filenames:
+        # Find file metadata
+        file_meta = None
+        for f in all_files:
+            if f['name'] == filename:
+                file_meta = f
+                break
+
+        is_admin = session.get('role') == 'admin'
+        is_owner = False
+        file_owner_username = None
+        original_filename = filename
+
+        if file_meta:
+            metadata = file_meta.get('metadata', {})
+            file_owner_username = metadata.get('uploaded_by')
+            original_filename = metadata.get('original_filename', filename)
+            if file_owner_username == session['user']:
+                is_owner = True
+
+        if not is_admin and not is_owner:
+            failed_list.append((filename, 'Không có quyền xóa'))
+            continue
+
+        # Attempt delete
+        try:
+            ok = storage_service.delete_file(filename)
+            if ok:
+                success_list.append(original_filename)
+                # Notify owner if available
+                if file_owner_username:
+                    try:
+                        owner_res = supabase_client.table('users').select('email').eq('username', file_owner_username).execute()
+                        if owner_res.data:
+                            owner_email = owner_res.data[0].get('email')
+                            send_file_deleted_email(
+                                email=owner_email,
+                                username=file_owner_username,
+                                filename=original_filename,
+                                deleted_by=session['user']
+                            )
+                    except Exception:
+                        pass
+            else:
+                failed_list.append((filename, 'Xóa thất bại'))
+        except Exception as e:
+            failed_list.append((filename, str(e)))
+
+    if success_list:
+        flash(f'Đã xóa thành công: {", ".join(success_list)}', 'success')
+    if failed_list:
+        msgs = '; '.join([f"{n}: {m}" for n, m in failed_list])
+        flash(f'Một số file không xóa được: {msgs}', 'error')
+
+    return redirect_back('index')
 
 @app.route('/preview/<filename>')
 def preview(filename):
@@ -475,23 +556,23 @@ def preview(filename):
         metadata_resp = supabase_client.table('files_metadata').select('metadata').eq('filename', filename).execute()
         if not metadata_resp.data:
             flash('File không tồn tại.', 'error')
-            return redirect(url_for('index'))
-        
+            return redirect_back('index')
+
         metadata = metadata_resp.data[0].get('metadata', {})
         file_owner = metadata.get('uploaded_by')
         is_public = metadata.get('is_public', False)
-        
+
         if not is_public and file_owner != session['user']:
             # Kiểm tra quyền truy cập trong chat
             has_access = False
-            
+
             private_msgs = supabase_client.table('privatemessages').select('*').contains('file_attachment', {'filename': filename}).execute()
             if private_msgs.data:
                 for msg in private_msgs.data:
                     if msg['senderid'] == get_user_id(session['user']) or msg['receiverid'] == get_user_id(session['user']):
                         has_access = True
                         break
-            
+
             if not has_access:
                 group_msgs = supabase_client.table('chatroommessages').select('*').contains('file_attachment', {'filename': filename}).execute()
                 if group_msgs.data:
@@ -500,19 +581,19 @@ def preview(filename):
                         if member_check.data:
                             has_access = True
                             break
-            
+
             if not has_access:
                 flash('Bạn không có quyền xem file này.', 'error')
-                return redirect(url_for('index'))
-        
+                return redirect_back('index')
+
     except Exception as e:
         flash(f'Lỗi kiểm tra quyền truy cập: {str(e)}', 'error')
-        return redirect(url_for('index'))
+        return redirect_back('index')
 
     result = storage_service.download_file(filename)
     if not result:
         flash('Lỗi khi tải xuống file để xem trước!', 'error')
-        return redirect(url_for('index'))
+        return redirect_back('index')
 
     file_data, original_filename, mime_type = result
 
@@ -538,7 +619,7 @@ def preview(filename):
         return Response(html, mimetype='text/html')
     except Exception as e:
         flash('Không thể hiển thị xem trước cho file này.', 'error')
-        return redirect(url_for('index'))
+        return redirect_back('index')
 
 @app.route('/preview_stream/<path:filename>')
 def preview_stream(filename):
@@ -836,7 +917,7 @@ def profile():
             
         if user_service.change_password(session['user'], current_password, new_password):
             flash('Mật khẩu đã được cập nhật thành công!', 'success')
-            return redirect(url_for('index'))
+            return redirect_back('index')
         else:
             flash('Mật khẩu hiện tại không đúng hoặc có lỗi xảy ra!', 'error')
 
@@ -1592,6 +1673,20 @@ def get_user_id(username):
         return res.data[0]['userid'] if res.data else None
     except:
         return None
+
+
+def redirect_back(default='index'):
+    """Redirect back to referrer or next param, otherwise to default endpoint."""
+    from flask import request
+    # Prefer explicit 'next' parameter
+    next_page = request.args.get('next') or request.form.get('next')
+    if next_page:
+        return redirect(next_page)
+    # Then referrer
+    ref = request.referrer
+    if ref:
+        return redirect(ref)
+    return redirect(url_for(default))
 
 # Group Management Routes
 @app.route('/group_settings/<int:roomid>')

@@ -299,6 +299,21 @@
     </style>
 </head>
 <body>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="container mt-3">
+                    {% for category, message in messages %}
+                        {% set cls = 'info' %}
+                        {% if category == 'success' %}
+                            {% set cls = 'success' %}
+                        {% elif category == 'error' %}
+                            {% set cls = 'danger' %}
+                        {% endif %}
+                        <div class="alert alert-{{ cls }}" role="alert">{{ message }}</div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
     <div class="create-room-container">
         <div class="header">
             <h2>

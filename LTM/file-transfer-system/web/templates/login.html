@@ -482,11 +482,17 @@
                             </div>
                         </div>
                         
+                        <div class="forgot-password-link" style="text-align: right; margin-top: 0.5rem; margin-bottom: 1rem;">
+                            <a href="#" onclick="showForgotPasswordModal(); return false;" style="color: #0ea5e9; text-decoration: none; font-size: 0.9rem; font-weight: 600;">
+                                <i class="fas fa-key me-1"></i>Quên mật khẩu?
+                            </a>
+                        </div>
+
                         <button type="submit" class="btn btn-primary w-100">
                             <i class="fas fa-sign-in-alt me-2"></i>
                             Đăng nhập
                         </button>
-                        
+
                         <div class="register-link">
                             <p>
                                 Chưa có tài khoản?
@@ -499,12 +505,58 @@
         </div>
     </div>
 
+    <!-- Forgot Password Modal -->
+    <div class="modal fade" id="forgotPasswordModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content" style="border-radius: 24px; border: none; overflow: hidden;">
+                <div class="modal-header" style="background: linear-gradient(135deg, #0ea5e9 0%, #10b981 100%); border: none; padding: 2rem;">
+                    <h5 class="modal-title" style="color: white; font-weight: 700; font-size: 1.5rem;">
+                        <i class="fas fa-key me-2"></i>Quên Mật Khẩu
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" style="padding: 2rem;">
+                    <div id="forgotPasswordAlert" style="display: none;"></div>
+
+                    <p style="color: #64748b; margin-bottom: 1.5rem; font-size: 0.95rem;">
+                        <i class="fas fa-info-circle me-2" style="color: #0ea5e9;"></i>
+                        Nhập email đã đăng ký để nhận mật khẩu tạm thời. Mật khẩu tạm sẽ có hiệu lực trong <strong>2 phút</strong>.
+                    </p>
+
+                    <form id="forgotPasswordForm">
+                        <div class="mb-3">
+                            <label for="forgotEmail" class="form-label" style="font-weight: 600; color: #334155;">
+                                <i class="fas fa-envelope me-2" style="color: #0ea5e9;"></i>Email đã đăng ký
+                            </label>
+                            <input type="email" class="form-control" id="forgotEmail" name="email"
+                                   placeholder="example@email.com" required
+                                   style="border: 2px solid #e2e8f0; border-radius: 12px; padding: 0.85rem 1rem;">
+                        </div>
+
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary" id="sendTempPasswordBtn"
+                                    style="background: linear-gradient(135deg, #0ea5e9 0%, #10b981 100%); border: none; border-radius: 12px; padding: 0.9rem; font-weight: 700;">
+                                <i class="fas fa-paper-plane me-2"></i>Gửi Mật Khẩu Tạm
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal"
+                                    style="border-radius: 12px; padding: 0.9rem; font-weight: 600;">
+                                <i class="fas fa-times me-2"></i>Hủy
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        let forgotPasswordModalInstance;
+
         function togglePassword() {
             const input = document.getElementById('password');
             const icon = document.getElementById('password-toggle-icon');
-            
+
             if (input.type === 'password') {
                 input.type = 'text';
                 icon.classList.remove('fa-eye');
@@ -515,20 +567,96 @@
                 icon.classList.add('fa-eye');
             }
         }
-        
+
+        function showForgotPasswordModal() {
+            const modalElement = document.getElementById('forgotPasswordModal');
+            if (!forgotPasswordModalInstance) {
+                forgotPasswordModalInstance = new bootstrap.Modal(modalElement);
+            }
+            forgotPasswordModalInstance.show();
+        }
+
+        function showForgotPasswordAlert(message, type) {
+            const alertDiv = document.getElementById('forgotPasswordAlert');
+            alertDiv.innerHTML = `
+                <div class="alert alert-${type} alert-dismissible fade show" role="alert" style="border-radius: 12px;">
+                    <i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'} me-2"></i>
+                    ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            `;
+            alertDiv.style.display = 'block';
+        }
+
         // Form submit animation
         document.getElementById('loginForm').addEventListener('submit', function(e) {
             const btn = this.querySelector('.btn-primary');
             btn.classList.add('loading');
             btn.innerHTML = '<span style="opacity: 0;">Đang đăng nhập...</span>';
         });
-        
+
+        // Forgot Password Form Handler
+        document.getElementById('forgotPasswordForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const email = document.getElementById('forgotEmail').value.trim();
+            const submitBtn = document.getElementById('sendTempPasswordBtn');
+            const originalBtnText = submitBtn.innerHTML;
+
+            // Disable button and show loading
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Đang xử lý...';
+
+            try {
+                const response = await fetch('/forgot-password', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ email: email })
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                    showForgotPasswordAlert(data.message, 'success');
+                    document.getElementById('forgotPasswordForm').reset();
+
+                    // Tự động đóng modal sau 3 giây
+                    setTimeout(() => {
+                        forgotPasswordModalInstance.hide();
+                        // Reset alert sau khi đóng
+                        setTimeout(() => {
+                            document.getElementById('forgotPasswordAlert').style.display = 'none';
+                            document.getElementById('forgotPasswordAlert').innerHTML = '';
+                        }, 300);
+                    }, 3000);
+                } else {
+                    showForgotPasswordAlert(data.message || 'Có lỗi xảy ra. Vui lòng thử lại.', 'danger');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showForgotPasswordAlert('Không thể kết nối đến server. Vui lòng thử lại sau.', 'danger');
+            } finally {
+                // Re-enable button
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalBtnText;
+            }
+        });
+
+        // Reset alert when modal is hidden
+        document.getElementById('forgotPasswordModal').addEventListener('hidden.bs.modal', function () {
+            document.getElementById('forgotPasswordAlert').style.display = 'none';
+            document.getElementById('forgotPasswordAlert').innerHTML = '';
+            document.getElementById('forgotPasswordForm').reset();
+        });
+
         // Input focus animations
         document.querySelectorAll('.form-control').forEach(input => {
             input.addEventListener('focus', function() {
                 this.parentElement.classList.add('focused');
             });
-            
+
             input.addEventListener('blur', function() {
                 this.parentElement.classList.remove('focused');
             });

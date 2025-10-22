@@ -416,3 +416,182 @@ class UserService:
         except Exception as e:
             print(f"Lỗi khi lấy online users: {str(e)}")
             return []
+
+    # ============================================
+    # FORGOT PASSWORD METHODS
+    # ============================================
+
+    def generate_temp_password(self):
+        """
+        Tạo mật khẩu tạm ngẫu nhiên 8 ký tự (3 chữ hoa + 3 chữ thường + 2 số)
+        """
+        import string
+        uppercase = ''.join(random.choices(string.ascii_uppercase, k=3))
+        lowercase = ''.join(random.choices(string.ascii_lowercase, k=3))
+        numbers = ''.join(random.choices(string.digits, k=2))
+
+        # Trộn lại các ký tự
+        temp_pwd_list = list(uppercase + lowercase + numbers)
+        random.shuffle(temp_pwd_list)
+        return ''.join(temp_pwd_list)
+
+    def create_temp_password(self, email):
+        """
+        Tạo mật khẩu tạm cho user theo email
+        Returns: (success, temp_password, username, message)
+        """
+        try:
+            # Tìm user theo email
+            user_result = self.supabase.table('users').select('*').eq('email', email).execute()
+
+            if not user_result.data:
+                return False, None, None, "Email không tồn tại trong hệ thống"
+
+            user = user_result.data[0]
+
+            # Kiểm tra user đã verify email chưa
+            if not user.get('is_verified', False):
+                return False, None, None, "Tài khoản chưa được xác thực. Vui lòng xác thực email trước."
+
+            # Tạo mật khẩu tạm
+            temp_password = self.generate_temp_password()
+
+            # Hash mật khẩu tạm
+            hashed_temp_password = self._hash_password(temp_password)
+
+            # Tính thời gian hết hạn (2 phút)
+            from datetime import timedelta
+            expires_at = (datetime.now() + timedelta(minutes=2)).isoformat()
+
+            # Cập nhật vào database
+            update_result = self.supabase.table('users').update({
+                'temp_password': hashed_temp_password,
+                'temp_password_expires_at': expires_at,
+                'require_password_change': False  # Chỉ set TRUE khi đăng nhập bằng temp password
+            }).eq('email', email).execute()
+
+            if update_result.data:
+                return True, temp_password, user['username'], "Mật khẩu tạm đã được tạo thành công"
+            else:
+                return False, None, None, "Không thể tạo mật khẩu tạm"
+
+        except Exception as e:
+            print(f"Error creating temp password: {str(e)}")
+            return False, None, None, f"Lỗi: {str(e)}"
+
+    def login_with_temp_password(self, username, password):
+        """
+        Đăng nhập với mật khẩu tạm hoặc mật khẩu chính
+        Returns: (success, user_data, requires_password_change, message)
+        """
+        try:
+            # Lấy user
+            user_result = self.supabase.table('users').select('*').eq('username', username).execute()
+
+            if not user_result.data:
+                return False, None, False, "Tài khoản không tồn tại"
+
+            user = user_result.data[0]
+
+            # Kiểm tra tài khoản đã được verify chưa (nếu có email)
+            if user.get('email') and not user.get('is_verified', False):
+                return False, None, False, "Tài khoản chưa được xác thực"
+
+            # Thử verify mật khẩu chính trước
+            if self._verify_password(password, user['password']):
+                # Đăng nhập thành công bằng mật khẩu chính
+                self.update_last_seen(user['userid'])
+                return True, user, False, "Đăng nhập thành công"
+
+            # Nếu không đúng mật khẩu chính, thử mật khẩu tạm
+            if user.get('temp_password'):
+                # Kiểm tra temp password có hết hạn chưa
+                temp_expires_str = user.get('temp_password_expires_at')
+                if temp_expires_str:
+                    temp_expires = datetime.fromisoformat(temp_expires_str.replace('Z', '+00:00'))
+
+                    if datetime.now().astimezone() > temp_expires.astimezone():
+                        # Temp password đã hết hạn - xóa nó
+                        self.supabase.table('users').update({
+                            'temp_password': None,
+                            'temp_password_expires_at': None
+                        }).eq('userid', user['userid']).execute()
+                        return False, None, False, "Mật khẩu tạm đã hết hạn"
+
+                    # Kiểm tra mật khẩu tạm
+                    if self._verify_password(password, user['temp_password']):
+                        # Đăng nhập thành công bằng mật khẩu tạm
+                        # Set require_password_change = True
+                        self.supabase.table('users').update({
+                            'require_password_change': True
+                        }).eq('userid', user['userid']).execute()
+
+                        self.update_last_seen(user['userid'])
+
+                        # Cập nhật user data để trả về
+                        user['require_password_change'] = True
+
+                        return True, user, True, "Đăng nhập bằng mật khẩu tạm thành công. Vui lòng đổi mật khẩu mới."
+
+            # Không đúng cả hai
+            return False, None, False, "Mật khẩu không chính xác"
+
+        except Exception as e:
+            print(f"Error during login: {str(e)}")
+            return False, None, False, f"Lỗi: {str(e)}"
+
+    def force_change_password(self, userid, new_password):
+        """
+        Đổi mật khẩu mới (không cần mật khẩu cũ) - dùng sau khi đăng nhập bằng temp password
+        Returns: (success, message)
+        """
+        try:
+            # Validate mật khẩu mới
+            is_valid, msg = self.validate_password(new_password)
+            if not is_valid:
+                return False, msg
+
+            # Hash mật khẩu mới
+            hashed_new_password = self._hash_password(new_password)
+
+            # Cập nhật mật khẩu và xóa temp password
+            update_result = self.supabase.table('users').update({
+                'password': hashed_new_password,
+                'temp_password': None,
+                'temp_password_expires_at': None,
+                'require_password_change': False
+            }).eq('userid', userid).execute()
+
+            if update_result.data:
+                return True, "Đổi mật khẩu thành công"
+            else:
+                return False, "Không thể cập nhật mật khẩu"
+
+        except Exception as e:
+            print(f"Error changing password: {str(e)}")
+            return False, f"Lỗi: {str(e)}"
+
+    def cleanup_expired_temp_passwords(self):
+        """
+        Xóa tất cả mật khẩu tạm đã hết hạn
+        Returns: số lượng bản ghi đã xóa
+        """
+        try:
+            now = datetime.now().isoformat()
+
+            # Lấy danh sách users có temp password hết hạn
+            expired_users = self.supabase.table('users').select('userid').lt('temp_password_expires_at', now).not_.is_('temp_password', 'null').execute()
+
+            count = 0
+            if expired_users.data:
+                for user in expired_users.data:
+                    self.supabase.table('users').update({
+                        'temp_password': None,
+                        'temp_password_expires_at': None
+                    }).eq('userid', user['userid']).execute()
+                    count += 1
+
+            return count
+        except Exception as e:
+            print(f"Error cleaning up expired temp passwords: {str(e)}")
+            return 0

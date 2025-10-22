@@ -167,26 +167,36 @@ def login():
     if request.method == 'POST':
         username = request.form.get('username', '')
         password = request.form.get('password', '')
-        
-        user = user_service.login(username, password)
-        if user:
+
+        # Sử dụng login_with_temp_password để hỗ trợ cả mật khẩu tạm
+        success, user, requires_change, message = user_service.login_with_temp_password(username, password)
+
+        if success and user:
             session['user'] = username
             session['role'] = user.get('role', 'user')
+            session['userid'] = user.get('userid')
+
+            # Nếu đăng nhập bằng temp password, lưu flag để redirect đến trang đổi mật khẩu
+            if requires_change:
+                session['require_password_change'] = True
+                flash(message, 'warning')
+                return redirect(url_for('force_change_password_page'))
+
             flash('Đăng nhập thành công!', 'success')
             # Debug info to help troubleshoot session persistence issues
             try:
                 print(f"[DEBUG] login success: username={username}, session_keys={list(session.keys())}")
             except Exception as _:
                 print("[DEBUG] login success (could not read session keys)")
-            
+
             # Redirect về trang gốc nếu có, không thì về index
             next_page = request.args.get('next')
             if next_page:
                 return redirect(next_page)
             return redirect(url_for('index'))
         else:
-            flash('Sai tên đăng nhập hoặc mật khẩu!', 'error')
-    
+            flash(message if message else 'Sai tên đăng nhập hoặc mật khẩu!', 'error')
+
     return render_template('login.html')
 
 @app.route('/logout')
@@ -196,10 +206,137 @@ def logout():
         user = user_service.get_user_profile(session['user'])
         if user:
             user_service.set_offline(user['userid'])
-    
+
     session.clear()
     flash('Đã đăng xuất!', 'success')
     return redirect(url_for('login'))
+
+# ==================== FORGOT PASSWORD ROUTES ====================
+
+@app.route('/forgot-password', methods=['POST'])
+def forgot_password():
+    """API endpoint để tạo mật khẩu tạm và gửi email"""
+    try:
+        data = request.get_json()
+        email = data.get('email', '').strip()
+
+        if not email:
+            return jsonify({"success": False, "message": "Email không được để trống"}), 400
+
+        # Validate email format
+        if not user_service.validate_email(email):
+            return jsonify({"success": False, "message": "Email không hợp lệ"}), 400
+
+        # Tạo mật khẩu tạm
+        success, temp_password, username, message = user_service.create_temp_password(email)
+
+        if not success:
+            return jsonify({"success": False, "message": message}), 400
+
+        # Gửi email qua n8n webhook
+        payload = {
+            "email": email,
+            "username": username,
+            "temp_password": temp_password,
+            "timestamp": datetime.now().isoformat(),
+            "login_url": request.host_url + "login",
+            "expires_in_minutes": 2
+        }
+
+        try:
+            response = requests.post(
+                N8N_FORGOT_PASSWORD_WEBHOOK_URL,
+                json=payload,
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                print(f"✅ Forgot password email sent successfully to {email}")
+                return jsonify({
+                    "success": True,
+                    "message": f"Mật khẩu tạm đã được gửi đến {email}. Vui lòng kiểm tra email của bạn."
+                }), 200
+            else:
+                print(f"⚠️ n8n webhook returned status {response.status_code}")
+                # Fallback: in ra console để dev có thể test
+                print(f"\n{'='*60}")
+                print(f"🔐 TEMP PASSWORD (n8n failed - fallback)")
+                print(f"{'='*60}")
+                print(f"Email: {email}")
+                print(f"Username: {username}")
+                print(f"Temp Password: {temp_password}")
+                print(f"Expires in: 2 minutes")
+                print(f"{'='*60}\n")
+                return jsonify({
+                    "success": True,
+                    "message": f"⚠️ Email service có lỗi. Mật khẩu tạm: {temp_password}"
+                }), 200
+
+        except requests.exceptions.RequestException as e:
+            print(f"❌ Error sending forgot password email via n8n: {str(e)}")
+            # Fallback: in ra console để dev có thể test
+            print(f"\n{'='*60}")
+            print(f"🔐 TEMP PASSWORD (n8n offline - fallback)")
+            print(f"{'='*60}")
+            print(f"Email: {email}")
+            print(f"Username: {username}")
+            print(f"Temp Password: {temp_password}")
+            print(f"Expires in: 2 minutes")
+            print(f"Login URL: {request.host_url}login")
+            print(f"{'='*60}\n")
+            return jsonify({
+                "success": True,
+                "message": f"⚠️ Email service offline. Mật khẩu tạm: {temp_password} (Kiểm tra console)"
+            }), 200
+
+    except Exception as e:
+        print(f"Error in forgot_password: {str(e)}")
+        return jsonify({"success": False, "message": "Có lỗi xảy ra. Vui lòng thử lại."}), 500
+
+@app.route('/change-password-required', methods=['GET', 'POST'])
+def force_change_password_page():
+    """Trang bắt buộc đổi mật khẩu sau khi đăng nhập bằng temp password"""
+    # Kiểm tra user đã đăng nhập chưa
+    if 'user' not in session:
+        return redirect(url_for('login'))
+
+    # Kiểm tra có require password change không
+    if not session.get('require_password_change', False):
+        return redirect(url_for('index'))
+
+    if request.method == 'POST':
+        new_password = request.form.get('new_password', '')
+        confirm_password = request.form.get('confirm_password', '')
+
+        # Validate
+        if not new_password or not confirm_password:
+            flash('Vui lòng nhập đầy đủ thông tin!', 'error')
+            return render_template('force_change_password.html')
+
+        if new_password != confirm_password:
+            flash('Mật khẩu xác nhận không khớp!', 'error')
+            return render_template('force_change_password.html')
+
+        # Validate password strength
+        is_valid, msg = user_service.validate_password(new_password)
+        if not is_valid:
+            flash(msg, 'error')
+            return render_template('force_change_password.html')
+
+        # Đổi mật khẩu
+        userid = session.get('userid')
+        success, message = user_service.force_change_password(userid, new_password)
+
+        if success:
+            # Xóa flag require_password_change
+            session.pop('require_password_change', None)
+            flash('Đổi mật khẩu thành công! Bạn có thể sử dụng mật khẩu mới để đăng nhập lần sau.', 'success')
+            return redirect(url_for('index'))
+        else:
+            flash(message, 'error')
+            return render_template('force_change_password.html')
+
+    return render_template('force_change_password.html')
 
 # ==================== FILE ROUTES ====================
 
@@ -1081,21 +1218,44 @@ def create_room():
     if exists.data:
         flash('Tên phòng đã tồn tại! Vui lòng chọn tên khác.', 'error')
         return redirect(url_for('create_room_page'))
-        
+
+    # Lấy userid của người tạo
+    creator = supabase_client.table('users').select('userid').eq('username', session['user']).execute()
+    if not creator.data:
+        flash('Không tìm thấy thông tin người dùng!', 'error')
+        return redirect(url_for('create_room_page'))
+
+    creator_id = creator.data[0]['userid']
+
     try:
-        res = supabase_client.table('chatrooms').insert({'roomname': room_name}).execute()
+        # Tạo room với createdby
+        res = supabase_client.table('chatrooms').insert({
+            'roomname': room_name,
+            'createdby': creator_id
+        }).execute()
         if not res.data:
             flash('Tạo phòng thất bại!', 'error')
             return redirect(url_for('create_room_page'))
     except Exception as e:
         flash('Có lỗi xảy ra khi tạo phòng: ' + str(e), 'error')
         return redirect(url_for('create_room_page'))
+
     room_id = res.data[0]['roomid']
+
+    # Thêm creator vào members (người tạo tự động là thành viên)
+    supabase_client.table('chatroommembers').insert({
+        'roomid': room_id,
+        'userid': creator_id
+    }).execute()
+
+    # Thêm các members được chọn
     for uid in member_ids:
-        supabase_client.table('chatroommembers').insert({'roomid': room_id, 'userid': int(uid)}).execute()
-    creator = supabase_client.table('users').select('userid').eq('username', session['user']).execute()
-    if creator.data:
-        supabase_client.table('chatroommembers').insert({'roomid': room_id, 'userid': creator.data[0]['userid']}).execute()
+        if int(uid) != creator_id:  # Tránh duplicate creator
+            supabase_client.table('chatroommembers').insert({
+                'roomid': room_id,
+                'userid': int(uid)
+            }).execute()
+
     flash('Tạo phòng thành công!', 'success')
     return redirect(url_for('chat'))
 
@@ -1760,44 +1920,54 @@ def group_settings(roomid):
             flash('Bạn không phải thành viên nhóm này', 'error')
             return redirect(url_for('chat'))
         
-        # Lấy danh sách thành viên với retry
+        # Lấy danh sách thành viên (không dùng JOIN)
         def get_members():
-            return supabase_client.table('chatroommembers').select('''
-                userid,
-                joinedat,
-                users!inner(username, avatar_url, is_online, last_seen)
-            ''').eq('roomid', roomid).execute()
-        
+            return supabase_client.table('chatroommembers').select('userid, joinedat').eq('roomid', roomid).execute()
+
         members_res = retry_supabase_operation(get_members)
-        
+
+        # Debug log
+        print(f"📊 Members query result: {len(members_res.data) if members_res.data else 0} members")
+
         members = []
         for member in members_res.data:
-            user_data = member['users']
-            
-            # Format last_seen nếu có
-            last_seen = user_data.get('last_seen')
-            if last_seen:
-                try:
-                    from datetime import datetime
-                    if isinstance(last_seen, str):
-                        # Parse ISO string to datetime
-                        dt = datetime.fromisoformat(last_seen.replace('Z', '+00:00'))
-                        last_seen = dt.strftime('%d/%m/%Y %H:%M')
-                    else:
-                        # Already a datetime object
-                        last_seen = last_seen.strftime('%d/%m/%Y %H:%M')
-                except:
-                    # If parsing fails, keep original value
-                    pass
-            
-            members.append({
-                'userid': member['userid'],
-                'username': user_data['username'],
-                'avatar_url': user_data.get('avatar_url'),
-                'is_online': user_data.get('is_online', False),
-                'last_seen': last_seen,
-                'joined_at': member['joinedat']
-            })
+            # Lấy thông tin user riêng lẻ
+            try:
+                user_res = supabase_client.table('users').select('username, avatar_url, is_online, last_seen').eq('userid', member['userid']).execute()
+
+                if not user_res.data:
+                    print(f"⚠️ Warning: User not found for userid: {member['userid']}")
+                    continue
+
+                user_data = user_res.data[0]
+
+                # Format last_seen nếu có
+                last_seen = user_data.get('last_seen')
+                if last_seen:
+                    try:
+                        from datetime import datetime
+                        if isinstance(last_seen, str):
+                            # Parse ISO string to datetime
+                            dt = datetime.fromisoformat(last_seen.replace('Z', '+00:00'))
+                            last_seen = dt.strftime('%d/%m/%Y %H:%M')
+                        else:
+                            # Already a datetime object
+                            last_seen = last_seen.strftime('%d/%m/%Y %H:%M')
+                    except:
+                        # If parsing fails, keep original value
+                        pass
+
+                members.append({
+                    'userid': member['userid'],
+                    'username': user_data.get('username', 'Unknown'),
+                    'avatar_url': user_data.get('avatar_url'),
+                    'is_online': user_data.get('is_online', False),
+                    'last_seen': last_seen,
+                    'joined_at': member.get('joinedat')
+                })
+            except Exception as e:
+                print(f"❌ Error fetching user data for userid {member['userid']}: {str(e)}")
+                continue
         
         return render_template('group_settings.html', room=room, members=members, is_room_creator=is_room_creator)
     
@@ -2055,40 +2225,47 @@ def add_group_member():
 
 @app.route('/remove_group_member', methods=['POST'])
 def remove_group_member():
-    """Xóa thành viên khỏi nhóm"""
+    """Xóa thành viên khỏi nhóm (chỉ người tạo nhóm mới có quyền)"""
     if 'user' not in session:
         return jsonify({"error": "Not logged in"}), 401
-    
+
     try:
         data = request.get_json()
         roomid = data.get('roomid')
         userid_to_remove = data.get('userid')
-        
+
         # Lấy userid từ session
         current_user_res = supabase_client.table('users').select('userid').eq('username', session['user']).execute()
         if not current_user_res.data:
             return jsonify({"error": "Không tìm thấy thông tin người dùng"}), 401
-        
+
         current_userid = current_user_res.data[0]['userid']
-        
-        # Kiểm tra quyền (chỉ thành viên mới được xóa người)
-        member_res = supabase_client.table('chatroommembers').select('userid').eq('roomid', roomid).eq('userid', current_userid).execute()
-        if not member_res.data:
-            return jsonify({"error": "Bạn không có quyền xóa thành viên"}), 403
-        
-        # Không cho phép xóa chính mình
+
+        # Kiểm tra user có phải là người tạo nhóm không
+        room_res = supabase_client.table('chatrooms').select('createdby').eq('roomid', roomid).execute()
+        if not room_res.data:
+            return jsonify({"error": "Nhóm không tồn tại"}), 404
+
+        room_creator = room_res.data[0].get('createdby')
+
+        # Chỉ người tạo nhóm mới có quyền kick member
+        if room_creator != current_userid:
+            return jsonify({"error": "Chỉ người tạo nhóm mới có quyền xóa thành viên"}), 403
+
+        # Không cho phép xóa chính mình (người tạo)
         if int(userid_to_remove) == current_userid:
-            return jsonify({"error": "Bạn không thể xóa chính mình khỏi nhóm"}), 400
-        
+            return jsonify({"error": "Bạn không thể xóa chính mình khỏi nhóm. Hãy dùng chức năng 'Xóa nhóm' thay thế."}), 400
+
         # Xóa thành viên
         remove_res = supabase_client.table('chatroommembers').delete().eq('roomid', roomid).eq('userid', userid_to_remove).execute()
-        
-        if remove_res.data:
+
+        if remove_res:
             return jsonify({"success": True, "message": "Đã xóa thành viên khỏi nhóm"})
         else:
             return jsonify({"error": "Lỗi khi xóa thành viên"}), 500
-    
+
     except Exception as e:
+        print(f"❌ Error in remove_group_member: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 # Private Chat Info Routes
@@ -2215,6 +2392,7 @@ N8N_WEBHOOK_URL = "https://n8n.vtcmobile.vn/webhook/send-otp"
 N8N_SUCCESS_WEBHOOK_URL = "https://n8n.vtcmobile.vn/webhook/registration-success"  # Webhook mới cho email thành công
 N8N_DELETE_FILE_WEBHOOK_URL = "https://n8n.vtcmobile.vn/webhook/file-deleted"
 N8N_UPLOAD_FILE_WEBHOOK_URL = "https://n8n.vtcmobile.vn/webhook/file-uploaded"
+N8N_FORGOT_PASSWORD_WEBHOOK_URL = "https://n8n.vtcmobile.vn/webhook/forgot-password"  # Webhook cho quên mật khẩu
 
 def validate_email(email):
     """Kiểm tra định dạng email"""
